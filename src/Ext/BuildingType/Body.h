@@ -97,6 +97,9 @@ public:
 
 		Valueable<bool> Refinery_UseNormalActiveAnim;
 		
+
+		Nullable<bool> BattlePointsCollector;
+
 		ExtData(BuildingTypeClass* OwnerObject) : Extension<BuildingTypeClass>(OwnerObject)
 			, PowersUp_Owner { AffectedHouse::Owner }
 			, PowersUp_Buildings {}
@@ -158,6 +161,7 @@ public:
 			, BunkerWallsDownSound {}
 			, BuildingRepairedSound {}
 			, Refinery_UseNormalActiveAnim { false }
+			, BattlePointsCollector {}
 		{ }
 
 		// Ares 0.A functions

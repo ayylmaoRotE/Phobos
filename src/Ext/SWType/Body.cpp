@@ -87,6 +87,7 @@ void SWTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->EMPulse_SuspendOthers)
 		.Process(this->EMPulse_Cannons)
 		.Process(this->EMPulse_TargetSelf)
+		.Process(this->BattlePoints_Amount)
 		;
 }
 
@@ -238,6 +239,8 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 		pNewSWType->Initialize(const_cast<SWTypeExt::ExtData*>(this), OwnerObject());
 		pNewSWType->LoadFromINI(const_cast<SWTypeExt::ExtData*>(this), OwnerObject(), pINI);
 	}
+
+	this->BattlePoints_Amount.Read(exINI, pSection, "BattlePoints.Amount");
 }
 
 void SWTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)

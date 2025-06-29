@@ -403,6 +403,8 @@ public:
 		Valueable<int> MultiWeapon_SelectCount;
 		bool ReadMultiWeapon;
 
+		Nullable<int> BattlePoints;
+
 		ExtData(TechnoTypeClass* OwnerObject) : Extension<TechnoTypeClass>(OwnerObject)
 			, HealthBar_Hide { false }
 			, UIDescription {}
@@ -755,6 +757,8 @@ public:
 			, MultiWeapon_IsSecondary {}
 			, MultiWeapon_SelectCount { 2 }
 			, ReadMultiWeapon { false }
+
+			, BattlePoints {}
 		{ }
 
 		virtual ~ExtData() = default;

@@ -39,6 +39,9 @@ void SWTypeExt::FireSuperWeaponExt(SuperClass* pSW, const CellStruct& cell)
 	if (static_cast<int>(pType->Type) == 28 && !pTypeExt->EMPulse_TargetSelf) // Ares' Type=EMPulse SW
 		pTypeExt->HandleEMPulseLaunch(pSW, cell);
 
+	if (pTypeExt->BattlePoints_Amount != 0)
+		pTypeExt->ApplyBattlePoints(pSW);
+
 	auto& sw_ext = HouseExt::ExtMap.Find(pHouse)->SuperExts[pType->ArrayIndex];
 	sw_ext.ShotCount++;
 
@@ -366,4 +369,10 @@ void SWTypeExt::ExtData::HandleEMPulseLaunch(SuperClass* pSW, const CellStruct& 
 			}
 		}
 	}
+}
+
+void SWTypeExt::ExtData::ApplyBattlePoints(SuperClass* pSW)
+{
+	auto pOwnerExt = HouseExt::ExtMap.Find(pSW->Owner);
+	pOwnerExt->UpdateBattlePoints(this->BattlePoints_Amount);
 }

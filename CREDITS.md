@@ -147,6 +147,7 @@ This page lists all the individual contributions to the project by their author.
   - Warhead that can not kill
   - `Pips.HideIfNoStrength` and `SelfHealing.EnabledBy` additions for shields
   - Warhead activation target health thresholds enhancements
+  - Battle Points economy for super weapons
 - **Starkku**:
   - Misc. minor bugfixes & improvements
   - AI script actions:
