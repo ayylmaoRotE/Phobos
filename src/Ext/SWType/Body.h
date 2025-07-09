@@ -90,6 +90,7 @@ public:
 
 		std::vector<ValueableVector<int>> LimboDelivery_RandomWeightsData;
 		std::vector<ValueableVector<int>> SW_Next_RandomWeightsData;
+		std::vector<ValueableVector<int>> SW_Link_RandomWeightsData;
 
 		std::vector<TypeConvertGroup> Convert_Pairs;
 
@@ -104,6 +105,14 @@ public:
 		Valueable<bool> EMPulse_TargetSelf;
 
 		Valueable<int> BattlePoints_Amount;
+
+		ValueableIdxVector<SuperWeaponTypeClass> SW_Link;
+		Valueable<bool> SW_Link_Grant;
+		Valueable<bool> SW_Link_Ready;
+		Valueable<bool> SW_Link_Reset;
+		ValueableVector<float> SW_Link_RollChances;
+		Valueable<CSFText> Message_LinkedSWAcquired;
+		NullableIdx<VoxClass> EVA_LinkedSWAcquired;
 
 		ExtData(SuperWeaponTypeClass* OwnerObject) : Extension<SuperWeaponTypeClass>(OwnerObject)
 			, TypeID { "" }
@@ -173,6 +182,14 @@ public:
 			, EMPulse_Cannons {}
 			, EMPulse_TargetSelf { false }
 			, BattlePoints_Amount { 0 }
+			, SW_Link {}
+			, SW_Link_Grant { false }
+			, SW_Link_Ready { false }
+			, SW_Link_Reset { false }
+			, SW_Link_RollChances {}
+			, SW_Link_RandomWeightsData {}
+			, Message_LinkedSWAcquired {}
+			, EVA_LinkedSWAcquired {}
 		{ }
 
 		// Ares 0.A functions
@@ -198,6 +215,8 @@ public:
 		std::pair<double, double> GetEMPulseCannonRange(BuildingClass* pBuilding) const;
 
 		void ApplyBattlePoints(SuperClass* pSW);
+
+		void ApplyLinkedSW(SuperClass* pSW);
 
 		virtual void LoadFromINIFile(CCINIClass* pINI) override;
 		virtual void Initialize() override;

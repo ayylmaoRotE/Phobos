@@ -148,6 +148,8 @@ This page lists all the individual contributions to the project by their author.
   - `Pips.HideIfNoStrength` and `SelfHealing.EnabledBy` additions for shields
   - Warhead activation target health thresholds enhancements
   - Battle Points economy for super weapons
+  - Event 606: AttachEffect is attaching to a Techno
+  - Linked superweapons
 - **Starkku**:
   - Misc. minor bugfixes & improvements
   - AI script actions:
@@ -271,6 +273,8 @@ This page lists all the individual contributions to the project by their author.
   - `IsSonic` wave drawing crash fix
   - Customizable electric bolt duration and electric bolt-related fixes
   - Airstrike flare visual customizations & fixes
+  - Restored parabombs
+  - Delayed fire weapons
 - **Morton (MortonPL)**:
   - `XDrawOffset` for animations
   - Shield passthrough & absorption
@@ -326,7 +330,7 @@ This page lists all the individual contributions to the project by their author.
   - Income money string indication upon ore dump
   - Warhead superweapon launch logic
   - TechnoType conversion placeholder
-  - `606 The shield of the attached object is broken` trigger event
+  - `600 The shield of the attached object is broken` trigger event
   - `RadialIndicator` observer visibility
   - Cloaked objects from allies displaying to player in singleplayer campaigns
   - Skip `NaturalParticleSystem` displaying from in-map pre-placed structures
@@ -501,6 +505,11 @@ This page lists all the individual contributions to the project by their author.
   - Customizable spawn delay of `VoxelAnim`'s `TrailerAnim` and fix its incorrect position
   - Add `DebrisMinimums` to keep the count of debris within a certain range
   - Task subtitles display in the middle of the screen
+  - Fix an issue that `MovementZone=Fly` harvesters can not be able to enter refinery buildings manually
+  - Fix an issue that jumpjet harvester cannot automatically go mining when leaving the weapons factory
+  - Fix an issue that jumpjet harvester will overlap when manually entering refinery buildings and cause game crashes
+  - Fix an issue that `Spawned` aircraft will fly towards the edge of the map when its `Spawner` is under EMP
+  - Burst without delay
 - **Ollerus**:
   - Build limit group enhancement
   - Customizable rocker amplitude
@@ -518,6 +527,7 @@ This page lists all the individual contributions to the project by their author.
   - Power plant damage factor
   - Allow faking digital display for `InfoType=Health` at disguise
   - Display banner improvement and doc
+  - Damage multiplier for health percentage
 - **NaotoYuuki** - Vertical & meteor trajectory projectile prototypes
 - **handama** - AI script action to `16005 Jump Back To Previous Script`
 - **TaranDahl (航味麻酱)**:
@@ -554,6 +564,7 @@ This page lists all the individual contributions to the project by their author.
   - Allows refineries to use multiple ActiveAnim simultaneously
   - Several attackmove related enhancement
   - Fix the bug that `OpenToppedWarpDistance` is calculated incorrectly for building target
+  - Burst without delay
 - **tyuah8**:
   - Drive/Jumpjet/Ship/Teleport locomotor did not power on when it is un-piggybacked bugfix
   - Destroyed unit leaves sensors bugfix

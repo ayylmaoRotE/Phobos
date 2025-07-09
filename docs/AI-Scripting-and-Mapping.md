@@ -36,7 +36,6 @@ RepairBaseNodes=                   ; List of 3 booleans indicating whether AI re
 ### Default loading screen and briefing offsets
 
 - It is now possible to set defaults for singleplayer map loading screen briefing pixel offsets and the loading screen images and palette that are used if there are no values defined for the map itself.
-  - Note that despite the key name being `DefaultLS800BkgdPal`, this applies to both shapes just like the original scenario-specific `LS800BkgdPal` does.
 
 In `missionmd.ini`:
 ```ini
@@ -48,6 +47,10 @@ DefaultLS800BriefLocY=0  ; integer
 DefaultLS640BkgdName=    ; filename - including the .shp extension.
 DefaultLS800BkgdName=    ; filename - including the .shp extension.
 DefaultLS800BkgdPal=     ; filename - including the .pal extension
+```
+
+```{note}
+Despite the key name being `DefaultLS800BkgdPal`, this applies to both shapes just like the original scenario-specific `LS800BkgdPal` does.
 ```
 
 ### MCV redeploying
@@ -680,7 +683,7 @@ ID=ActionCount,[Action1],608,0,0,[HouseIndex],0,0,0,A,[ActionX]
     - `none` will make the text banner not display the variable.
     - `variable` will make the text banner display the variable alone and will ignore the text in `CSF`.
     - `prefix`/`prefixed` will make the text banner display the variable before any other text.
-    - `surfix`/`surfixed` will make the text banner display the variable after any other text.
+    - `suffix`/`suffixed` will make the text banner display the variable after any other text.
 
 In `rulesmd.ini`:
 ```ini
@@ -806,16 +809,16 @@ ID=EventCount,...,600,2,0,0,...
 - `602`: Springs when specified house doesn't own a single instance of set TechnoType.
   - Multiplayer houses (indices 4475 through 4482) are supported.
 
-```{note}
-These events, as opposed to [events 81 & 82 from Ares](https://ares-developers.github.io/Ares-docs/new/triggerevents.html#house-owns-techno-type-81-82), take house as a parameter instead of using the trigger owner.
-```
-
 In `mycampaign.map`:
 ```ini
 [Events]
 ...
 ID=EventCount,...,[EVENTID],2,[HouseIndex],[TechnoType],...
 ...
+```
+
+```{note}
+These events, as opposed to [events 81 & 82 from Ares](https://ares-developers.github.io/Ares-docs/new/triggerevents.html#house-owns-techno-type-81-82), take house as a parameter instead of using the trigger owner.
 ```
 
 ### `604-605` Checking if a specific Techno enters in a cell
@@ -838,3 +841,18 @@ In `mycampaign.map`:
 | >= 0          | The index of the current House in the map  |
 | -1            | This value is ignored (any house is valid) |
 | -2            | Pick the owner of the map trigger          |
+
+### `606` AttachEffect is attaching to a Techno
+
+- Checks if an `AttachEffectType` is attaching to a techno. Doesn't work for [attached effects](New-or-Enhanced-Logics.md#attached-effects) that were attached prior to the trigger's enabling.
+- To be elaborate, the event will be triggered during these occasions:
+  - Self-owned effects: initial granted (triggered after `AttachEffect.InitialDelays` amount of frames), recreation (triggered after `AttachEffect.Delays` or `AttachEffect.RecreationDelays` amount of frames).
+  - Effects from other sources: granted, refreshing when trying to apply the same type of attached effect to the techno.
+
+In `mycampaign.map`:
+```ini
+[Events]
+...
+ID=EventCount,...,606,2,0,[AttachEffectType],...
+...
+```
