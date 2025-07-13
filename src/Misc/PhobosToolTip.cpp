@@ -194,6 +194,18 @@ void PhobosToolTip::HelpText_Super(int swidx)
 		showSth = true;
 	}
 
+	if (int nPoints = std::abs(pData->CommanderPoints_Amount))
+	{
+		oss << L"\n";
+
+		if (pData->CommanderPoints_Amount > 0)
+			oss << Phobos::UI::CommanderPoints_Label << L"+" << nPoints;
+		else if (pData->CommanderPoints_Amount < 0)
+			oss << Phobos::UI::CommanderPoints_Label << L"-" << nPoints;
+
+		showSth = true;
+	}
+
 	int rechargeTime = TickTimeToSeconds(pSuper->GetRechargeTime());
 	if (rechargeTime > 0)
 	{

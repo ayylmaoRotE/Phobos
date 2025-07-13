@@ -96,6 +96,7 @@ void SWTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->Message_LinkedSWAcquired)
 		.Process(this->EVA_LinkedSWAcquired)
 		.Process(this->BattlePoints_Amount)
+		.Process(this->CommanderPoints_Amount)
 		;
 }
 
@@ -279,6 +280,7 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	}
 
 	this->BattlePoints_Amount.Read(exINI, pSection, "BattlePoints.Amount");
+	this->CommanderPoints_Amount.Read(exINI, pSection, "CommanderPoints.Amount");
 }
 
 void SWTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)

@@ -105,6 +105,7 @@ public:
 		Valueable<bool> EMPulse_TargetSelf;
 
 		Valueable<int> BattlePoints_Amount;
+		Valueable<int> CommanderPoints_Amount;
 
 		ValueableIdxVector<SuperWeaponTypeClass> SW_Link;
 		Valueable<bool> SW_Link_Grant;
@@ -182,6 +183,7 @@ public:
 			, EMPulse_Cannons {}
 			, EMPulse_TargetSelf { false }
 			, BattlePoints_Amount { 0 }
+			, CommanderPoints_Amount { 0 }
 			, SW_Link {}
 			, SW_Link_Grant { false }
 			, SW_Link_Ready { false }
@@ -215,6 +217,7 @@ public:
 		std::pair<double, double> GetEMPulseCannonRange(BuildingClass* pBuilding) const;
 
 		void ApplyBattlePoints(SuperClass* pSW);
+		void ApplyCommanderPoints(SuperClass* pSW);
 
 		void ApplyLinkedSW(SuperClass* pSW);
 

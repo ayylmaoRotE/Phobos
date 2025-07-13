@@ -39,6 +39,9 @@ void SideExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->Sidebar_BattlePoints_Offset.Read(exINI, pSection, "Sidebar.BattlePoints.Offset");
 	this->Sidebar_BattlePoints_Color.Read(exINI, pSection, "Sidebar.BattlePoints.Color");
 	this->Sidebar_BattlePoints_Align.Read(exINI, pSection, "Sidebar.BattlePoints.Align");
+	this->Sidebar_CommanderPoints_Offset.Read(exINI, pSection, "Sidebar.CommanderPoints.Offset");
+	this->Sidebar_CommanderPoints_Color.Read(exINI, pSection, "Sidebar.CommanderPoints.Color");
+	this->Sidebar_CommanderPoints_Align.Read(exINI, pSection, "Sidebar.CommanderPoints.Align");
 	this->ToolTip_Background_Color.Read(exINI, pSection, "ToolTip.Background.Color");
 	this->ToolTip_Background_Opacity.Read(exINI, pSection, "ToolTip.Background.Opacity");
 	this->ToolTip_Background_BlurSize.Read(exINI, pSection, "ToolTip.Background.BlurSize");
@@ -74,6 +77,9 @@ void SideExt::ExtData::Serialize(T& Stm)
 		.Process(this->Sidebar_BattlePoints_Offset)
 		.Process(this->Sidebar_BattlePoints_Color)
 		.Process(this->Sidebar_BattlePoints_Align)
+		.Process(this->Sidebar_CommanderPoints_Offset)
+		.Process(this->Sidebar_CommanderPoints_Color)
+		.Process(this->Sidebar_CommanderPoints_Align)
 		.Process(this->ToolTip_Background_Color)
 		.Process(this->ToolTip_Background_Opacity)
 		.Process(this->ToolTip_Background_BlurSize)

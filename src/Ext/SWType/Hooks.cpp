@@ -276,7 +276,7 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 
 	if (pSuper->IsSuspended)
 		return ReturnZero;
-	
+
 	if (pSuper->Type->UseChargeDrain)
 	{
 		R->AL(pSuper->ChargeDrainState != ChargeDrainState::Charging);
@@ -291,6 +291,17 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 		if (pExt->BattlePoints_Amount < 0)
 		{
 			if (pOwnerExt->BattlePoints < std::abs(pExt->BattlePoints_Amount))
+				return ReturnZero;
+		}
+	}
+
+	if (pExt->CommanderPoints_Amount != 0)
+	{
+		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
+
+		if (pExt->CommanderPoints_Amount < 0)
+		{
+			if (pOwnerExt->CommanderPoints < std::abs(pExt->CommanderPoints_Amount))
 				return ReturnZero;
 		}
 	}

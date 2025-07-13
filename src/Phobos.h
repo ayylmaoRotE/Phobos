@@ -75,6 +75,13 @@ public:
 		static const wchar_t* BattlePoints_Label;
 		static const wchar_t* BattlePointsSidebar_Label;
 		static bool BattlePointsSidebar_Label_InvertPosition;
+		static bool BattlePointsSidebar_DisplayAsPercentage;
+		static const wchar_t* CommanderPoints_Label;
+		static const wchar_t* CommanderPointsSidebar_Label;
+		static bool CommanderPointsSidebar_Label_InvertPosition;
+		static bool CommanderPointsSidebar_HideLabel;
+		static bool BattlePointsSidebar_Show;
+		static bool CommanderPointsSidebar_Show;
 	};
 
 	class Config

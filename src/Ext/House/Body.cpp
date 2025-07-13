@@ -657,6 +657,7 @@ void HouseExt::ExtData::Serialize(T& Stm)
 		.Process(this->SuperExts)
 		.Process(this->ForceEnemyIndex)
 		.Process(this->BattlePoints)
+		.Process(this->CommanderPoints)
 		;
 }
 
@@ -1138,4 +1139,17 @@ int HouseExt::ExtData::CalculateBattlePoints(TechnoClass* pTechno)
 	points = points == 0 && pThisTypeExt->BattlePoints_CanUseStandardPoints ? pTechno->GetTechnoType()->Points : points;
 
 	return points;
+}
+
+void HouseExt::ExtData::UpdateCommanderPoints(int modifier)
+{
+	this->CommanderPoints += modifier;
+	this->CommanderPoints = this->CommanderPoints < 0 ? 0 : this->CommanderPoints;
+}
+
+bool HouseExt::ExtData::AreCommanderPointsEnabled()
+{
+	// For debugging: Always return true when CommanderPointsSidebar_Show is enabled
+	// This bypasses any logic that might prevent display
+	return Phobos::UI::CommanderPointsSidebar_Show;
 }

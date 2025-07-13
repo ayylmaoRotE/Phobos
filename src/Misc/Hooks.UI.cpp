@@ -90,23 +90,75 @@ DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
 	RectangleStruct vRect = DSurface::Sidebar->GetRect();
 	auto pHouseExt = HouseExt::ExtMap.Find(pPlayer);
 
-	if (pHouseExt->AreBattlePointsEnabled())
+	// Dynamic horizontal positioning for CommanderPoints and BattlePoints
+	auto pSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
+	int baseStartX = DSurface::Sidebar->GetWidth() / 2 - 70;
+	int currentX = baseStartX;
+	int yPosition = 2;
+	const int spacing = 0; // Pixels between CP and BP
+
+	// CommanderPoints - always positioned first if enabled
+	if (pHouseExt->AreCommanderPointsEnabled() && Phobos::UI::CommanderPointsSidebar_Show)
 	{
-		auto pSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
 		wchar_t counter[0x20];
+		ColorStruct clrToolTip = pSideExt->Sidebar_CommanderPoints_Color.Get(Drawing::TooltipColor);
+		int points = pHouseExt->CommanderPoints;
 
-		ColorStruct clrToolTip = pSideExt->Sidebar_BattlePoints_Color.Get(Drawing::TooltipColor);
-
-		int points = pHouseExt->BattlePoints;
-
-		if (Phobos::UI::BattlePointsSidebar_Label_InvertPosition)
-			swprintf_s(counter, L"%d %ls", points, Phobos::UI::BattlePointsSidebar_Label);
+		// Check if label should be hidden - show only the number
+		if (Phobos::UI::CommanderPointsSidebar_HideLabel)
+		{
+			swprintf_s(counter, L"%d", points);
+		}
 		else
-			swprintf_s(counter, L"%ls %d", Phobos::UI::BattlePointsSidebar_Label, points);
+		{
+			if (Phobos::UI::CommanderPointsSidebar_Label_InvertPosition)
+				swprintf_s(counter, L"%d %ls", points, Phobos::UI::CommanderPointsSidebar_Label);
+			else
+				swprintf_s(counter, L"%ls %d", Phobos::UI::CommanderPointsSidebar_Label, points);
+		}
 
 		Point2D vPos = {
-			DSurface::Sidebar->GetWidth() / 2 - 70 + pSideExt->Sidebar_BattlePoints_Offset.Get().X,
-			2 + pSideExt->Sidebar_BattlePoints_Offset.Get().Y
+			currentX + pSideExt->Sidebar_CommanderPoints_Offset.Get().X,
+			yPosition + pSideExt->Sidebar_CommanderPoints_Offset.Get().Y
+		};
+
+		auto const TextFlags = static_cast<TextPrintType>(static_cast<int>(TextPrintType::UseGradPal | TextPrintType::Metal12)
+				| static_cast<int>(pSideExt->Sidebar_CommanderPoints_Align.Get()));
+
+		DSurface::Sidebar->DrawText(counter, &vRect, &vPos, Drawing::RGB_To_Int(clrToolTip), 0, TextFlags);
+
+		// Estimate text width to advance position for BattlePoints
+		// Use character count * average character width as approximation
+		int textWidth = wcslen(counter) * 6; // Approximate 6 pixels per character for Metal12 font
+		currentX += textWidth + spacing;
+	}
+
+	// BattlePoints - positioned after CommanderPoints or at base position if CP disabled
+	if (pHouseExt->AreBattlePointsEnabled() && Phobos::UI::BattlePointsSidebar_Show)
+	{
+		wchar_t counter[0x20];
+		ColorStruct clrToolTip = pSideExt->Sidebar_BattlePoints_Color.Get(Drawing::TooltipColor);
+		int points = pHouseExt->BattlePoints;
+
+		// Format with tighter spacing (no space between label and value) and optional percentage
+		if (Phobos::UI::BattlePointsSidebar_Label_InvertPosition)
+		{
+			if (Phobos::UI::BattlePointsSidebar_DisplayAsPercentage)
+				swprintf_s(counter, L"%d\u2607%ls", points, Phobos::UI::BattlePointsSidebar_Label);
+			else
+				swprintf_s(counter, L"%d%ls", points, Phobos::UI::BattlePointsSidebar_Label);
+		}
+		else
+		{
+			if (Phobos::UI::BattlePointsSidebar_DisplayAsPercentage)
+				swprintf_s(counter, L"%ls%d\u2607", Phobos::UI::BattlePointsSidebar_Label, points);
+			else
+				swprintf_s(counter, L"%ls%d", Phobos::UI::BattlePointsSidebar_Label, points);
+		}
+
+		Point2D vPos = {
+			currentX + pSideExt->Sidebar_BattlePoints_Offset.Get().X,
+			yPosition + pSideExt->Sidebar_BattlePoints_Offset.Get().Y
 		};
 
 		auto const TextFlags = static_cast<TextPrintType>(static_cast<int>(TextPrintType::UseGradPal | TextPrintType::Metal12)

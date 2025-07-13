@@ -46,6 +46,9 @@ void SWTypeExt::FireSuperWeaponExt(SuperClass* pSW, const CellStruct& cell)
 	if (pTypeExt->BattlePoints_Amount != 0)
 		pTypeExt->ApplyBattlePoints(pSW);
 
+	if (pTypeExt->CommanderPoints_Amount != 0)
+		pTypeExt->ApplyCommanderPoints(pSW);
+
 	auto& sw_ext = HouseExt::ExtMap.Find(pHouse)->SuperExts[pType->ArrayIndex];
 	sw_ext.ShotCount++;
 
@@ -461,4 +464,10 @@ void SWTypeExt::ExtData::ApplyBattlePoints(SuperClass* pSW)
 {
 	auto pOwnerExt = HouseExt::ExtMap.Find(pSW->Owner);
 	pOwnerExt->UpdateBattlePoints(this->BattlePoints_Amount);
+}
+
+void SWTypeExt::ExtData::ApplyCommanderPoints(SuperClass* pSW)
+{
+	auto pOwnerExt = HouseExt::ExtMap.Find(pSW->Owner);
+	pOwnerExt->UpdateCommanderPoints(this->CommanderPoints_Amount);
 }
