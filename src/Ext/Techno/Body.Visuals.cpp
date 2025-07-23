@@ -41,7 +41,7 @@ void TechnoExt::DrawSelfHealPips(TechnoClass* pThis, Point2D* pLocation, Rectang
 				return true;
 
 			const bool isCampaign = SessionClass::IsCampaign();
-			const bool fromPlayer = RulesExt::Global()->GainSelfHealFromPlayerControl && isCampaign;
+			const bool fromPlayer = RulesExt::Global()->GainSelfHealFromPlayerControl && isCampaign && (pOwner->IsHumanPlayer || pOwner->IsInPlayerControl);
 			const bool fromAllies = RulesExt::Global()->GainSelfHealFromAllies;
 
 			if (fromPlayer || fromAllies)
@@ -387,7 +387,7 @@ void TechnoExt::DrawSelectBox(TechnoClass* pThis, const Point2D* pLocation, cons
 
 			if (pSelectBox->GroundLine_Dashed)
 				pSurface->DrawDashed(&start, &point, color, 0);
-			else
+			else if (Line_In_Bounds(&start, &point, &DSurface::ViewBounds))
 				pSurface->DrawLine(&start, &point, color);
 		}
 	}
