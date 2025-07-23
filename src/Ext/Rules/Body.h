@@ -232,7 +232,7 @@ public:
 
 		Valueable<bool> AttackMove_IgnoreWeaponCheck;
 		Nullable<bool> AttackMove_StopWhenTargetAcquired;
-		
+
 		// cache tint color
 		int TintColorIronCurtain;
 		int TintColorForceShield;
@@ -241,6 +241,8 @@ public:
 		Nullable<bool> BattlePoints;
 		Nullable<int> BattlePoints_DefaultValue;
 		Nullable<int> BattlePoints_DefaultFriendlyValue;
+
+		Nullable<bool> CommanderPoints;
 
 		ExtData(RulesClass* OwnerObject) : Extension<RulesClass>(OwnerObject)
 			, Storage_TiberiumIndex { -1 }
@@ -428,6 +430,8 @@ public:
 			, BattlePoints {}
 			, BattlePoints_DefaultValue {}
 			, BattlePoints_DefaultFriendlyValue {}
+
+			, CommanderPoints {}
 		{ }
 
 		virtual ~ExtData() = default;

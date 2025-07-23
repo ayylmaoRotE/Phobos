@@ -92,13 +92,14 @@ public:
 		Nullable<float> BuildingBunkerROFMult;
 		NullableIdx<VocClass> BunkerWallsUpSound;
 		NullableIdx<VocClass> BunkerWallsDownSound;
-		
+
 		NullableIdx<VocClass> BuildingRepairedSound;
 
 		Valueable<bool> Refinery_UseNormalActiveAnim;
-		
+
 
 		Nullable<bool> BattlePointsCollector;
+		Nullable<bool> CommanderPointsCollector;
 
 		ExtData(BuildingTypeClass* OwnerObject) : Extension<BuildingTypeClass>(OwnerObject)
 			, PowersUp_Owner { AffectedHouse::Owner }
@@ -162,6 +163,7 @@ public:
 			, BuildingRepairedSound {}
 			, Refinery_UseNormalActiveAnim { false }
 			, BattlePointsCollector {}
+			, CommanderPointsCollector {}
 		{ }
 
 		// Ares 0.A functions

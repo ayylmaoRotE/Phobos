@@ -17,9 +17,12 @@ public:
 		Valueable<bool> BattlePoints;
 		Valueable<bool> BattlePoints_CanUseStandardPoints;
 
+		Valueable<bool> CommanderPoints;
+
 		ExtData(HouseTypeClass* OwnerObject) : Extension<HouseTypeClass>(OwnerObject)
 			, BattlePoints { false }
 			, BattlePoints_CanUseStandardPoints { false }
+			, CommanderPoints { false }
 		{ }
 
 		virtual ~ExtData() = default;

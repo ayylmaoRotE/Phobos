@@ -1149,7 +1149,26 @@ void HouseExt::ExtData::UpdateCommanderPoints(int modifier)
 
 bool HouseExt::ExtData::AreCommanderPointsEnabled()
 {
-	// For debugging: Always return true when CommanderPointsSidebar_Show is enabled
-	// This bypasses any logic that might prevent display
-	return Phobos::UI::CommanderPointsSidebar_Show;
+	const auto pThis = this->OwnerObject();
+	const auto pOwnerTypeExt = HouseTypeExt::ExtMap.Find(pThis->Type);
+
+	// Global setting
+	if (RulesExt::Global()->CommanderPoints.isset())
+		return RulesExt::Global()->CommanderPoints.Get();
+
+	// House specific setting
+	if (!pOwnerTypeExt->CommanderPoints)
+	{
+		// Structures can enable this logic overwriting the house's setting
+		for (const auto pBuilding : pThis->Buildings)
+		{
+			const auto pBuildingTypeExt = BuildingTypeExt::ExtMap.Find(pBuilding->Type);
+			if (pBuildingTypeExt->CommanderPointsCollector.Get(false))
+				return true;
+		}
+
+		return false;
+	}
+
+	return true;
 }
