@@ -146,6 +146,10 @@ bool SWSidebarClass::AddButton(int superIdx)
 	if (pSWExt->SuperWeaponSidebar_Significance < Phobos::Config::SuperWeaponSidebar_RequiredSignificance)
 		return false;
 
+	// If SW.AuxTechnos.Required=true, only add cameo if requirements are met
+	if (pSWExt->SW_AuxTechnos_Required && !pSWExt->IsAvailable(HouseClass::CurrentPlayer))
+		return false;
+
 	auto& columns = this->Columns;
 
 	if (columns.empty() && !this->AddColumn())
@@ -268,10 +272,23 @@ void SWSidebarClass::RecheckCameo()
 
 		for (const auto& button : column->Buttons)
 		{
-			if (HouseClass::CurrentPlayer->Supers[button->SuperIndex]->IsPresent)
+			// Current logic: Remove if SuperWeapon is not present
+			if (!HouseClass::CurrentPlayer->Supers[button->SuperIndex]->IsPresent)
+			{
+				removeButtons.push_back(button->SuperIndex);
 				continue;
+			}
 
-			removeButtons.push_back(button->SuperIndex);
+			// NEW LOGIC: Remove if SW.AuxTechnos.Required=true and requirements not met
+			const auto pSWType = SuperWeaponTypeClass::Array.GetItemOrDefault(button->SuperIndex);
+			if (pSWType)
+			{
+				const auto pSWExt = SWTypeExt::ExtMap.Find(pSWType);
+				if (pSWExt->SW_AuxTechnos_Required && !pSWExt->IsAvailable(HouseClass::CurrentPlayer))
+				{
+					removeButtons.push_back(button->SuperIndex);
+				}
+			}
 		}
 
 		if (removeButtons.size())
@@ -279,6 +296,33 @@ void SWSidebarClass::RecheckCameo()
 
 		for (const auto& index : removeButtons)
 			column->RemoveButton(index);
+	}
+
+	// Check for SuperWeapons that should now be added back
+	// This handles the case where required technos are built and cameos should reappear
+	for (const auto superIdx : ScenarioExt::Global()->SWSidebar_Indices)
+	{
+		// Check if this SuperWeapon is already in the sidebar
+		bool alreadyPresent = false;
+		for (const auto& column : sidebar.Columns)
+		{
+			for (const auto& button : column->Buttons)
+			{
+				if (button->SuperIndex == superIdx)
+				{
+					alreadyPresent = true;
+					break;
+				}
+			}
+			if (alreadyPresent)
+				break;
+		}
+
+		// If not present, try to add it (AddButton will check all requirements)
+		if (!alreadyPresent)
+		{
+			sidebar.AddButton(superIdx);
+		}
 	}
 
 	sidebar.SortButtons();

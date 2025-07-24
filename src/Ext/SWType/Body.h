@@ -45,6 +45,8 @@ public:
 		DWORD SW_RequiredHouses;
 		DWORD SW_ForbiddenHouses;
 		ValueableVector<BuildingTypeClass*> SW_AuxBuildings;
+		ValueableVector<TechnoTypeClass*> SW_AuxTechnos;
+		Valueable<bool> SW_AuxTechnos_Required;
 		ValueableVector<BuildingTypeClass*> SW_NegBuildings;
 		Valueable<bool> SW_InitialReady;
 		ValueableIdx<SuperWeaponTypeClass> SW_PostDependent;
@@ -135,6 +137,8 @@ public:
 			, SW_RequiredHouses { 0xFFFFFFFFu }
 			, SW_ForbiddenHouses { 0u }
 			, SW_AuxBuildings {}
+			, SW_AuxTechnos {}
+			, SW_AuxTechnos_Required { false }
 			, SW_NegBuildings {}
 			, SW_InitialReady { false }
 			, SW_PostDependent {}

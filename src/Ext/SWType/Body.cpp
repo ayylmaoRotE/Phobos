@@ -40,6 +40,8 @@ void SWTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->SW_RequiredHouses)
 		.Process(this->SW_ForbiddenHouses)
 		.Process(this->SW_AuxBuildings)
+		.Process(this->SW_AuxTechnos)
+		.Process(this->SW_AuxTechnos_Required)
 		.Process(this->SW_NegBuildings)
 		.Process(this->SW_InitialReady)
 		.Process(this->SW_PostDependent)
@@ -127,6 +129,8 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->SW_RequiredHouses = pINI->ReadHouseTypesList(pSection, "SW.RequiredHouses", this->SW_RequiredHouses);
 	this->SW_ForbiddenHouses = pINI->ReadHouseTypesList(pSection, "SW.ForbiddenHouses", this->SW_ForbiddenHouses);
 	this->SW_AuxBuildings.Read(exINI, pSection, "SW.AuxBuildings");
+	this->SW_AuxTechnos.Read(exINI, pSection, "SW.AuxTechnos");
+	this->SW_AuxTechnos_Required.Read(exINI, pSection, "SW.AuxTechnos.Required");
 	this->SW_NegBuildings.Read(exINI, pSection, "SW.NegBuildings");
 	this->SW_InitialReady.Read(exINI, pSection, "SW.InitialReady");
 	this->SW_PostDependent.Read(exINI, pSection, "SW.PostDependent");

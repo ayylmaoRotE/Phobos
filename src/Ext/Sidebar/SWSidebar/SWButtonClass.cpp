@@ -6,6 +6,7 @@
 #include <UI.h>
 
 #include <Ext/SWType/Body.h>
+#include <Ext/House/Body.h>
 #include <Utilities/AresFunctions.h>
 
 SWButtonClass::SWButtonClass(unsigned int id, int superIdx, int x, int y, int width, int height)
@@ -65,8 +66,47 @@ bool SWButtonClass::Draw(bool forced)
 		pSurface->DrawRect(&cameoRect, tooltipColor);
 	}
 
-	if (pSuper->IsReady && !pCurrent->CanTransactMoney(pSWExt->Money_Amount) ||
-		(pSWExt->SW_UseAITargeting && AresFunctions::IsTargetConstraintsEligible && !AresFunctions::IsTargetConstraintsEligible(AresFunctions::SWTypeExtMap_Find(pSuper->Type), HouseClass::CurrentPlayer, true)))
+	// Check for insufficient resources or unavailability
+	bool shouldDarken = false;
+
+	if (pSuper->IsReady)
+	{
+		// Check money requirements
+		if (!pCurrent->CanTransactMoney(pSWExt->Money_Amount))
+			shouldDarken = true;
+
+		// Check SW.AuxTechnos and other availability requirements
+		if (!pSWExt->IsAvailable(pCurrent))
+			shouldDarken = true;
+
+		// Check BattlePoints requirements
+		if (pSWExt->BattlePoints_Amount != 0)
+		{
+			const auto pCurrentExt = HouseExt::ExtMap.Find(pCurrent);
+			if (pSWExt->BattlePoints_Amount < 0)
+			{
+				if (pCurrentExt->BattlePoints < std::abs(pSWExt->BattlePoints_Amount))
+					shouldDarken = true;
+			}
+		}
+
+		// Check CommanderPoints requirements
+		if (pSWExt->CommanderPoints_Amount != 0)
+		{
+			const auto pCurrentExt = HouseExt::ExtMap.Find(pCurrent);
+			if (pSWExt->CommanderPoints_Amount < 0)
+			{
+				if (pCurrentExt->CommanderPoints < std::abs(pSWExt->CommanderPoints_Amount))
+					shouldDarken = true;
+			}
+		}
+	}
+
+	// Check AI targeting constraints
+	if (pSWExt->SW_UseAITargeting && AresFunctions::IsTargetConstraintsEligible && !AresFunctions::IsTargetConstraintsEligible(AresFunctions::SWTypeExtMap_Find(pSuper->Type), HouseClass::CurrentPlayer, true))
+		shouldDarken = true;
+
+	if (shouldDarken)
 	{
 		RectangleStruct darkenBounds { 0, 0, location.X + this->Width, location.Y + this->Height };
 		pSurface->DrawSHP(FileSystem::SIDEBAR_PAL, FileSystem::DARKEN_SHP, 0, &location, &darkenBounds, BlitterFlags::bf_400 | BlitterFlags::Darken, 0, 0, ZGradient::Ground, 1000, 0, nullptr, 0, 0, 0);

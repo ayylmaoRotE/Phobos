@@ -284,6 +284,11 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 	}
 
 	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+
+	// Check SW_AuxTechnos availability
+	if (!pExt->IsAvailable(pSuper->Owner))
+		return ReturnZero;
+
 	if (pExt->BattlePoints_Amount != 0)
 	{
 		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
