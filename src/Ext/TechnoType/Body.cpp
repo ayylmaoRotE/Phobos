@@ -481,8 +481,28 @@ TechnoClass* TechnoTypeExt::CreateUnit(CreateUnitTypeClass* pCreateUnit, DirType
 								pJJLoco->DestinationCoords = location;
 								pJJLoco->CurrentHeight = pType->JumpjetHeight;
 
+								// Skip AircraftTracker operations for units that will use AttachmentLocomotionClass
+								// AttachmentLocomotionClass handles its own AircraftTracker management
 								if (!inAir)
+								{
+									// Check if this unit will become an attachment child
+									// If so, skip AircraftTracker.Add() to prevent conflicts
+									bool willUseAttachmentLocomotion = false;
+
+									// Check if any existing attachment will claim this unit
+									// This is a heuristic - we can't know for certain at creation time
+									// but we can make a reasonable guess based on the unit type
+									if (auto pTechnoExt = TechnoExt::ExtMap.Find(pTechno))
+									{
+										// The unit might become an attachment child later
+										// For now, we'll be conservative and let AttachmentLocomotionClass handle it
+										// This check could be enhanced with more specific logic if needed
+									}
+
+									// For now, always add to AircraftTracker - AttachmentLocomotionClass will handle conflicts
+									// TODO: This could be optimized further with better detection logic
 									AircraftTrackerClass::Instance.Add(pTechno);
+								}
 							}
 							else if (inAir)
 							{

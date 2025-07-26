@@ -105,11 +105,18 @@ bool AttachmentLocomotionClass::Process()
 
 			if (oldLayer < Layer::Air && Layer::Air <= newLayer)
 			{
-				AircraftTrackerClass::Instance.Add(this->LinkedTo);
+				// Safety check: Only add to AircraftTracker if not already tracked
+				// This prevents conflicts with ConsideredAircraft units that may have been
+				// added to the tracker during creation
+				if (this->LinkedTo->GetLastFlightMapCoords() == CellStruct::Empty)
+				{
+					AircraftTrackerClass::Instance.Add(this->LinkedTo);
+				}
 				changedAirborneStatus = true;
 			}
 			else if (newLayer < Layer::Air && Layer::Air <= oldLayer)
 			{
+				// Always try to remove - this is safe even if not tracked
 				AircraftTrackerClass::Instance.Remove(this->LinkedTo);
 				changedAirborneStatus = true;
 			}
@@ -123,7 +130,13 @@ bool AttachmentLocomotionClass::Process()
 		if (oldPos != newPos)
 		{
 			if (Layer::Air <= newLayer && !changedAirborneStatus)
-				AircraftTrackerClass::Instance.Update(this->LinkedTo, oldPos, newPos);
+			{
+				// Safety check: Only update if the unit is actually being tracked
+				if (this->LinkedTo->GetLastFlightMapCoords() != CellStruct::Empty)
+				{
+					AircraftTrackerClass::Instance.Update(this->LinkedTo, oldPos, newPos);
+				}
+			}
 
 			if (this->LinkedTo->GetTechnoType()->SensorsSight)
 			{
