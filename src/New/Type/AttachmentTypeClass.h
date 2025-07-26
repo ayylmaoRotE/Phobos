@@ -26,6 +26,8 @@ public:
 	Nullable<WeaponTypeClass*> DestructionWeapon_Parent;
 	Nullable<Mission> ParentDestructionMission;
 	Nullable<Mission> ParentDetachmentMission;
+	Valueable<bool> InheritMission;
+	Valueable<bool> InheritTarget;
 
 	AttachmentTypeClass(const char* pTitle = NONE_STR) : Enumerable<AttachmentTypeClass>(pTitle)
 		, RespawnAtCreation { true }
@@ -45,6 +47,8 @@ public:
 		, DestructionWeapon_Parent { }
 		, ParentDestructionMission { }
 		, ParentDetachmentMission { }
+		, InheritMission { false }
+		, InheritTarget { false }
 	{ }
 
 	virtual ~AttachmentTypeClass() = default;

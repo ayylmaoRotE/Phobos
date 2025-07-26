@@ -145,6 +145,24 @@ void AttachmentClass::AI()
 
 		if (pType->InheritOwner)
 			this->Child->SetOwningHouse(this->Parent->GetOwningHouse(), false);
+
+		// Mission inheritance
+		if (pType->InheritMission) {
+			Mission currentParentMission = this->Parent->CurrentMission;
+			if (currentParentMission != this->LastParentMission) {
+				this->Child->QueueMission(currentParentMission, false);
+				this->LastParentMission = currentParentMission;
+			}
+		}
+
+		// Target inheritance
+		if (pType->InheritTarget) {
+			AbstractClass* currentParentTarget = this->Parent->Target;
+			if (currentParentTarget != this->LastParentTarget) {
+				this->Child->SetTarget(currentParentTarget);
+				this->LastParentTarget = currentParentTarget;
+			}
+		}
 	}
 }
 
@@ -252,6 +270,18 @@ bool AttachmentClass::AttachChild(TechnoClass* pChild)
 			pController->CaptureManager->FreeUnit(this->Child);
 	}
 
+	// Initialize inheritance state
+	this->LastParentMission = this->Parent->CurrentMission;
+	this->LastParentTarget = this->Parent->Target;
+
+	// Apply initial inheritance if enabled
+	if (pType->InheritMission) {
+		this->Child->QueueMission(this->Parent->CurrentMission, false);
+	}
+	if (pType->InheritTarget) {
+		this->Child->SetTarget(this->Parent->Target);
+	}
+
 	return true;
 }
 
@@ -299,6 +329,8 @@ bool AttachmentClass::Serialize(T& stm)
 		.Process(this->Parent)
 		.Process(this->Child)
 		.Process(this->RespawnTimer)
+		.Process(this->LastParentMission)
+		.Process(this->LastParentTarget)
 		.Success();
 }
 

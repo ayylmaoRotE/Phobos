@@ -30,6 +30,8 @@ void AttachmentTypeClass::LoadFromINI(CCINIClass* pINI)
 	this->DestructionWeapon_Parent.Read(exINI, section, "DestructionWeapon.Parent");
 	this->ParentDestructionMission.Read(exINI, section, "ParentDestructionMission");
 	this->ParentDetachmentMission.Read(exINI, section, "ParentDetachmentMission");
+	this->InheritMission.Read(exINI, section, "InheritMission");
+	this->InheritTarget.Read(exINI, section, "InheritTarget");
 }
 
 template <typename T>
@@ -53,6 +55,8 @@ void AttachmentTypeClass::Serialize(T& Stm)
 		.Process(this->DestructionWeapon_Parent)
 		.Process(this->ParentDestructionMission)
 		.Process(this->ParentDetachmentMission)
+		.Process(this->InheritMission)
+		.Process(this->InheritTarget)
 		;
 }
 
