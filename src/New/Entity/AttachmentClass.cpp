@@ -162,7 +162,11 @@ void AttachmentClass::Destroy(TechnoClass* pSource)
 			TechnoExt::FireWeaponAtSelf(this->Child, pType->DestructionWeapon_Child);
 
 		if (pType->InheritDestruction && this->Child)
-			TechnoExt::Kill(this->Child, pSource);
+		{
+			// Fix: Handle null source by using parent as fallback
+			TechnoClass* effectiveSource = pSource ? pSource : this->Parent;
+			TechnoExt::Kill(this->Child, effectiveSource);
+		}
 		else if (!this->Child->InLimbo && pType->ParentDestructionMission.isset())
 			this->Child->QueueMission(pType->ParentDestructionMission.Get(), false);
 

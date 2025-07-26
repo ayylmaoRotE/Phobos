@@ -2,6 +2,7 @@
 
 #include <SessionClass.h>
 #include <VeinholeMonsterClass.h>
+#include <New/Entity/AttachmentClass.h>
 
 std::unique_ptr<ScenarioExt::ExtData> ScenarioExt::Data = nullptr;
 
@@ -261,6 +262,10 @@ DEFINE_HOOK(0x55B4E1, LogicClass_Update_BeforeAll, 0x5)
 
 	ScenarioExt::Global()->UpdateAutoDeathObjectsInLimbo();
 	ScenarioExt::Global()->UpdateTransportReloaders();
+
+	// Update attachment AI - moved from broken 0x55B6B3 hook
+	for (auto const& attachment : AttachmentClass::Array)
+		attachment->AI();
 
 	return 0;
 }
