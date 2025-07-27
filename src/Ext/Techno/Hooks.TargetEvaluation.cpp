@@ -64,6 +64,11 @@ DEFINE_HOOK(0x6F7E47, TechnoClass_EvaluateObject_MapZone, 0x7)
 
 	if (auto const pTechno = abstract_cast<TechnoClass*>(pObject))
 	{
+		// Check if target is an attachment with CanBeTargeted=no
+		const auto pTargetExt = TechnoExt::ExtMap.Find(pTechno);
+		if (pTargetExt && pTargetExt->ParentAttachment && !pTargetExt->ParentAttachment->GetType()->CanBeTargeted)
+			return DisallowedObject;
+
 		if (!TechnoExt::AllowedTargetByZone(pThis, pTechno, MapZoneTemp::zoneScanType, nullptr, true, zone))
 			return DisallowedObject;
 	}
@@ -213,6 +218,24 @@ DEFINE_HOOK(0x6F85AB, TechnoClass_CanAutoTargetObject_AggressiveAttackMove, 0x6)
 	const auto pExt = TechnoExt::ExtMap.Find(pThis);
 
 	return pExt->TypeExtData->AttackMove_Aggressive.Get(RulesExt::Global()->AttackMove_Aggressive) ? CanTarget : ContinueCheck;
+}
+
+DEFINE_HOOK(0x6F8580, TechnoClass_CanAutoTargetObject_CanBeTargeted, 0x6)
+{
+	enum { ContinueCheck = 0x6F85AB, CannotTarget = 0x6F894F };
+
+	GET(TechnoClass* const, pThis, EDI);
+	GET(ObjectClass* const, pObject, ESI);
+
+	// Check if target is an attachment with CanBeTargeted=no
+	if (auto const pTargetTechno = abstract_cast<TechnoClass*>(pObject))
+	{
+		const auto pTargetExt = TechnoExt::ExtMap.Find(pTargetTechno);
+		if (pTargetExt && pTargetExt->ParentAttachment && !pTargetExt->ParentAttachment->GetType()->CanBeTargeted)
+			return CannotTarget;
+	}
+
+	return ContinueCheck;
 }
 
 #pragma endregion

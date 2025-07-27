@@ -320,6 +320,11 @@ DEFINE_HOOK(0x6FC339, TechnoClass_CanFire, 0x6)
 			return CannotFire;
 		}
 
+		// Check if target is an attachment with CanBeTargeted=no
+		const auto pTargetExt = TechnoExt::ExtMap.Find(pTargetTechno);
+		if (pTargetExt && pTargetExt->ParentAttachment && !pTargetExt->ParentAttachment->GetType()->CanBeTargeted)
+			return CannotFire;
+
 		if (!pWeaponExt->SkipWeaponPicking)
 		{
 			if (!EnumFunctions::IsTechnoEligible(pTargetTechno, pWeaponExt->CanTarget)

@@ -19,6 +19,14 @@ DEFINE_HOOK(0x701900, TechnoClass_ReceiveDamage_Shield, 0x6)
 	GET(TechnoClass*, pThis, ECX);
 	LEA_STACK(args_ReceiveDamage*, args, 0x4);
 
+	// CanBeDamaged attachment logic - must be checked first
+	const auto pExt = TechnoExt::ExtMap.Find(pThis);
+	if (pExt && pExt->ParentAttachment && !pExt->ParentAttachment->GetType()->CanBeDamaged)
+	{
+		*args->Damage = 0;
+		return 0;
+	}
+
 	const auto pWHExt = WarheadTypeExt::ExtMap.Find(args->WH);
 	int& damage = *args->Damage;
 
@@ -31,7 +39,6 @@ DEFINE_HOOK(0x701900, TechnoClass_ReceiveDamage_Shield, 0x6)
 	}
 
 	const auto pRules = RulesExt::Global();
-	const auto pExt = TechnoExt::ExtMap.Find(pThis);
 	const auto pSourceHouse = args->SourceHouse;
 	const auto pTargetHouse = pThis->Owner;
 

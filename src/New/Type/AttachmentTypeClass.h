@@ -28,6 +28,8 @@ public:
 	Nullable<Mission> ParentDetachmentMission;
 	Valueable<bool> InheritMission;
 	Valueable<bool> InheritTarget;
+	Valueable<bool> CanBeTargeted;
+	Valueable<bool> CanBeDamaged;
 
 	AttachmentTypeClass(const char* pTitle = NONE_STR) : Enumerable<AttachmentTypeClass>(pTitle)
 		, RespawnAtCreation { true }
@@ -49,6 +51,8 @@ public:
 		, ParentDetachmentMission { }
 		, InheritMission { false }
 		, InheritTarget { false }
+		, CanBeTargeted { true }
+		, CanBeDamaged { true }
 	{ }
 
 	virtual ~AttachmentTypeClass() = default;
