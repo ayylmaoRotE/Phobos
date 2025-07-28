@@ -31,6 +31,20 @@ public:
 	Valueable<bool> CanBeTargeted;
 	Valueable<bool> CanBeDamaged;
 
+	// Formation system properties
+	Valueable<AttachmentFormationType> FormationType;
+	Valueable<double> FormationSpacing;
+	Valueable<double> FormationOffset;
+	Valueable<int> FormationPriority;
+	Valueable<bool> MaintainFormationInCombat;
+	Valueable<bool> AvoidParentCollision;
+	Valueable<int> TrailDelay;
+	Valueable<TrailMode> TrailMode;
+	Valueable<bool> UseNativeLocomotion;
+	Valueable<double> OrbitRadius;
+	Valueable<double> OrbitSpeed;
+	Valueable<bool> SmoothMovement;
+
 	AttachmentTypeClass(const char* pTitle = NONE_STR) : Enumerable<AttachmentTypeClass>(pTitle)
 		, RespawnAtCreation { true }
 		, RespawnDelay { -1 }
@@ -53,6 +67,18 @@ public:
 		, InheritTarget { false }
 		, CanBeTargeted { true }
 		, CanBeDamaged { true }
+		, FormationType { AttachmentFormationType::Follow }
+		, FormationSpacing { 64.0 }
+		, FormationOffset { 0.0 }
+		, FormationPriority { 0 }
+		, MaintainFormationInCombat { true }
+		, AvoidParentCollision { true }
+		, TrailDelay { 5 }
+		, TrailMode { TrailMode::Historical }
+		, UseNativeLocomotion { false }
+		, OrbitRadius { 128.0 }
+		, OrbitSpeed { 1.0 }
+		, SmoothMovement { true }
 	{ }
 
 	virtual ~AttachmentTypeClass() = default;

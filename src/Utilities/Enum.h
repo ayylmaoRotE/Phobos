@@ -238,6 +238,24 @@ enum class AttachmentYSortPosition
 	OverParent = 2
 };
 
+enum class AttachmentFormationType
+{
+	Follow = 0,      // Current behavior - fixed offset from parent
+	Trail = 1,       // Follow parent's movement path (centipede style)
+	Escort = 2,      // Maintain relative position while avoiding obstacles
+	Orbit = 3,       // Circular movement around parent
+	Line = 4,        // Linear formation
+	Wedge = 5,       // V-shaped formation
+	Diamond = 6,     // Diamond formation
+	Custom = 7       // Custom formation defined by FLH
+};
+
+enum class TrailMode
+{
+	Historical = 0,  // Current system - follow historical path
+	Direct = 1       // Train-like direct following
+};
+
 enum class ChronoSparkleDisplayPosition : unsigned char
 {
 	None = 0x0,

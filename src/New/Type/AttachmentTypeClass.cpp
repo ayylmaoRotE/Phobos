@@ -34,6 +34,18 @@ void AttachmentTypeClass::LoadFromINI(CCINIClass* pINI)
 	this->InheritTarget.Read(exINI, section, "InheritTarget");
 	this->CanBeTargeted.Read(exINI, section, "CanBeTargeted");
 	this->CanBeDamaged.Read(exINI, section, "CanBeDamaged");
+
+	// Formation system properties
+	this->FormationType.Read(exINI, section, "FormationType");
+	this->FormationSpacing.Read(exINI, section, "FormationSpacing");
+	this->FormationOffset.Read(exINI, section, "FormationOffset");
+	this->FormationPriority.Read(exINI, section, "FormationPriority");
+	this->MaintainFormationInCombat.Read(exINI, section, "MaintainFormationInCombat");
+	this->AvoidParentCollision.Read(exINI, section, "AvoidParentCollision");
+	this->TrailDelay.Read(exINI, section, "TrailDelay");
+	this->OrbitRadius.Read(exINI, section, "OrbitRadius");
+	this->OrbitSpeed.Read(exINI, section, "OrbitSpeed");
+	this->SmoothMovement.Read(exINI, section, "SmoothMovement");
 }
 
 template <typename T>
@@ -61,6 +73,16 @@ void AttachmentTypeClass::Serialize(T& Stm)
 		.Process(this->InheritTarget)
 		.Process(this->CanBeTargeted)
 		.Process(this->CanBeDamaged)
+		.Process(this->FormationType)
+		.Process(this->FormationSpacing)
+		.Process(this->FormationOffset)
+		.Process(this->FormationPriority)
+		.Process(this->MaintainFormationInCombat)
+		.Process(this->AvoidParentCollision)
+		.Process(this->TrailDelay)
+		.Process(this->OrbitRadius)
+		.Process(this->OrbitSpeed)
+		.Process(this->SmoothMovement)
 		;
 }
 

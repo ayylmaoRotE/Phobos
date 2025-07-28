@@ -750,9 +750,11 @@ void TechnoExt::InitializeAttachments(TechnoClass* pThis)
 	auto const pType = pThis->GetTechnoType();
 	auto const pTypeExt = TechnoTypeExt::ExtMap.Find(pType);
 
+	int formationIndex = 0;
 	for (auto& entry : pTypeExt->AttachmentData)
 	{
 		pExt->ChildAttachments.push_back(std::make_unique<AttachmentClass>(&entry, pThis, nullptr));
+		pExt->ChildAttachments.back()->FormationIndex = formationIndex++;
 		pExt->ChildAttachments.back()->Initialize();
 	}
 }
