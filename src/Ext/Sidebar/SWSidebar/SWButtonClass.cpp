@@ -109,11 +109,6 @@ bool SWButtonClass::Draw(bool forced)
 		shouldDarken = true;
 
 	if (shouldDarken)
-	if (pSuper->IsReady && 
-		(!pCurrent->CanTransactMoney(pSWExt->Money_Amount) ||
-		 (pSWExt->BattlePoints_Amount != 0 && !HouseExt::ExtMap.Find(pCurrent)->CanTransactBattlePoints(pSWExt->BattlePoints_Amount)) ||
-		 (pSWExt->CommanderPoints_Amount != 0 && !HouseExt::ExtMap.Find(pCurrent)->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount)))
-		|| (pSWExt->SW_UseAITargeting && AresFunctions::IsTargetConstraintsEligible && !AresFunctions::IsTargetConstraintsEligible(AresFunctions::SWTypeExtMap_Find(pSuper->Type), HouseClass::CurrentPlayer, true)))
 	{
 		RectangleStruct darkenBounds { 0, 0, location.X + this->Width, location.Y + this->Height };
 		pSurface->DrawSHP(FileSystem::SIDEBAR_PAL, FileSystem::DARKEN_SHP, 0, &location, &darkenBounds, BlitterFlags::bf_400 | BlitterFlags::Darken, 0, 0, ZGradient::Ground, 1000, 0, nullptr, 0, 0, 0);
