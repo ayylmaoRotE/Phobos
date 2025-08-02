@@ -6,6 +6,7 @@
 #include <Ext/HouseType/Body.h>
 
 #include <ScenarioClass.h>
+#include <Utilities/Debug.h>
 
 //Static init
 
@@ -776,6 +777,7 @@ DEFINE_HOOK(0x50114D, HouseClass_InitFromINI, 0x5)
 
 	return 0;
 }
+
 #pragma region BuildLimitGroup
 int CountOwnedIncludeDeploy(const HouseClass* pThis, const TechnoTypeClass* pItem)
 {
@@ -1172,3 +1174,14 @@ bool HouseExt::ExtData::AreCommanderPointsEnabled()
 
 	return true;
 }
+
+bool HouseExt::ExtData::CanTransactBattlePoints(int amount)
+{
+	return (amount > 0) || this->BattlePoints >= -amount;
+}
+
+bool HouseExt::ExtData::CanTransactCommanderPoints(int amount)
+{
+	return (amount > 0) || this->CommanderPoints >= -amount;
+}
+

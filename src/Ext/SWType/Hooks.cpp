@@ -3,24 +3,40 @@
 #include <SuperClass.h>
 
 #include <Ext/House/Body.h>
+#include <Utilities/Debug.h>
 
-//this hook just for phobos NewSWType
+
+//this hook just for phobos NewSWType  
 DEFINE_HOOK(0x6CC390, SuperClass_Launch, 0x6)
 {
 	GET(SuperClass* const, pSuper, ECX);
 	GET_STACK(CellStruct const* const, pCell, 0x4);
 	GET_STACK(bool const, isPlayer, 0x8);
 
-	Debug::Log("[Phobos Launch] %s\n", pSuper->Type->get_ID());
+	// Add validation directly at launch point
+	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+	
+	// Only validate AutoFire superweapons for human players
+	if (pSuper->Owner->IsControlledByHuman() && pExt->SW_AutoFire)
+	{
+		if (pExt->BattlePoints_Amount < 0)
+		{
+			const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
+			if (pOwnerExt->BattlePoints < std::abs(pExt->BattlePoints_Amount))
+			{
+				Debug::Log("BLOCKING LAUNCH of AutoFire SW %s: Need %d BattlePoints, have %d\n", 
+					pSuper->Type->ID, std::abs(pExt->BattlePoints_Amount), pOwnerExt->BattlePoints);
+				return 0x6CDE40; // Skip the launch
+			}
+		}
+	}
 
 	auto const handled = SWTypeExt::Activate(pSuper, *pCell, isPlayer);
 
 	return handled ? 0x6CDE40 : 0;
 }
 
-// Ares hooked at 0x6CC390 and jumped to 0x6CDE40
-// If a super is not handled by Ares however, we do it at the original entry point
-DEFINE_HOOK_AGAIN(0x6CC390, SuperClass_Place_FireExt, 0x6)
+// Hook at 0x6CDE40 where Ares jumps to - this should catch Ares launches
 DEFINE_HOOK(0x6CDE40, SuperClass_Place_FireExt, 0x5)
 {
 	GET(SuperClass* const, pSuper, ECX);
@@ -29,7 +45,36 @@ DEFINE_HOOK(0x6CDE40, SuperClass_Place_FireExt, 0x5)
 
 	// Check if the SuperClass pointer is valid and not corrupted.
 	if (pSuper && VTable::Get(pSuper) == SuperClass::AbsVTable)
+	{
+		// Add validation here where Ares sends us
+		const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+		
+		// Only validate AutoFire superweapons for human players
+		if (pSuper->Owner->IsControlledByHuman() && pExt->SW_AutoFire)
+		{
+			const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
+			
+			// Check BattlePoints requirements
+			if (pExt->BattlePoints_Amount < 0)
+			{
+				if (pOwnerExt->BattlePoints < std::abs(pExt->BattlePoints_Amount))
+					return 0; // Skip the firing
+				else
+					pOwnerExt->BattlePoints += pExt->BattlePoints_Amount; // Deduct cost
+			}
+			
+			// Check CommanderPoints requirements
+			if (pExt->CommanderPoints_Amount < 0)
+			{
+				if (pOwnerExt->CommanderPoints < std::abs(pExt->CommanderPoints_Amount))
+					return 0; // Skip the firing
+				else
+					pOwnerExt->CommanderPoints += pExt->CommanderPoints_Amount; // Deduct cost
+			}
+		}
+		
 		SWTypeExt::FireSuperWeaponExt(pSuper, *pCell);
+	}
 	else
 		Debug::Log(__FUNCTION__": Hook entered with an invalid or corrupt SuperClass pointer.");
 
@@ -284,6 +329,7 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 	}
 
 	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+
 
 	// Check SW_AuxTechnos availability
 	if (!pExt->IsAvailable(pSuper->Owner))

@@ -127,6 +127,9 @@ public:
 		void UpdateCommanderPoints(int modifier);
 		bool AreCommanderPointsEnabled();
 
+		bool CanTransactBattlePoints(int amount);
+		bool CanTransactCommanderPoints(int amount);
+
 		virtual void LoadFromStream(PhobosStreamReader& Stm) override;
 		virtual void SaveToStream(PhobosStreamWriter& Stm) override;
 

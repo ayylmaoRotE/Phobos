@@ -4,6 +4,7 @@
 #include <Ext/Scenario/Body.h>
 #include "Ext/Techno/Body.h"
 #include "Ext/Building/Body.h"
+#include <Utilities/Debug.h>
 #include <unordered_map>
 
 DEFINE_HOOK(0x508C30, HouseClass_UpdatePower_UpdateCounter, 0x5)
