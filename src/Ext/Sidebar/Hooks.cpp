@@ -4,7 +4,10 @@
 #include <HouseClass.h>
 #include <FactoryClass.h>
 #include <FileSystem.h>
+#include <SuperClass.h>
 #include <Ext/Side/Body.h>
+#include <Ext/SWType/Body.h>
+#include <Ext/House/Body.h>
 
 DEFINE_HOOK(0x6A593E, SidebarClass_InitForHouse_AdditionalFiles, 0x5)
 {
@@ -130,6 +133,45 @@ DEFINE_HOOK(0x4E1A84, GadgetClass_DTOR_ClearCurrentOverGadget, 0x6)
 {
 	GadgetClass* const pThis = (R->Origin() == 0x4E1A84) ? R->ESI<GadgetClass*>() : R->ECX<GadgetClass*>();
 	AnnounceInvalidPointer(Make_Global<GadgetClass*>(0x8B3E94), pThis);
+	return 0;
+}
+
+// Vanilla sidebar superweapon cameo darkening - replicate money check for BP/CP/AuxTechnos
+DEFINE_HOOK(0x6A99B7, TabCameoListClass_Draw_SuperDarken, 0x5)
+{
+	GET(int, idxSW, EDI);
+
+	bool darken = false;
+	
+	if (auto pSW = HouseClass::CurrentPlayer->Supers.GetItem(idxSW))
+	{
+		if (auto pExt = SWTypeExt::ExtMap.Find(pSW->Type))
+		{
+			if (auto pHouseExt = HouseExt::ExtMap.Find(pSW->Owner))
+			{
+				if (pSW->IsReady)
+				{
+					// Check money requirements (original Ares logic)
+					if (!pSW->Owner->CanTransactMoney(pExt->Money_Amount))
+						darken = true;
+					
+					// Check BattlePoints requirements
+					if (pExt->BattlePoints_Amount != 0 && !pHouseExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
+						darken = true;
+					
+					// Check CommanderPoints requirements  
+					if (pExt->CommanderPoints_Amount != 0 && !pHouseExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
+						darken = true;
+					
+					// Check SW.AuxTechnos and other availability requirements
+					if (!pExt->IsAvailable(pSW->Owner))
+						darken = true;
+				}
+			}
+		}
+	}
+
+	R->BL(darken);
 	return 0;
 }
 
