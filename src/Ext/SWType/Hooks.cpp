@@ -54,21 +54,21 @@ DEFINE_HOOK(0x6CDE40, SuperClass_Place_FireExt, 0x5)
 		{
 			const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
 			
-			// Check BattlePoints requirements
-			if (pExt->BattlePoints_Amount < 0)
+			// Check BattlePoints requirements using CanTransact method
+			if (pExt->BattlePoints_Amount != 0)
 			{
-				if (pOwnerExt->BattlePoints < std::abs(pExt->BattlePoints_Amount))
+				if (!pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
 					return 0; // Skip the firing
-				else
+				else if (pExt->BattlePoints_Amount < 0)
 					pOwnerExt->BattlePoints += pExt->BattlePoints_Amount; // Deduct cost
 			}
 			
-			// Check CommanderPoints requirements
-			if (pExt->CommanderPoints_Amount < 0)
+			// Check CommanderPoints requirements using CanTransact method
+			if (pExt->CommanderPoints_Amount != 0)
 			{
-				if (pOwnerExt->CommanderPoints < std::abs(pExt->CommanderPoints_Amount))
-					return 0; // Skip the firing
-				else
+				if (!pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
+					return 0; // Skip the firing  
+				else if (pExt->CommanderPoints_Amount < 0)
 					pOwnerExt->CommanderPoints += pExt->CommanderPoints_Amount; // Deduct cost
 			}
 		}
@@ -338,23 +338,15 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 	if (pExt->BattlePoints_Amount != 0)
 	{
 		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
-
-		if (pExt->BattlePoints_Amount < 0)
-		{
-			if (pOwnerExt->BattlePoints < std::abs(pExt->BattlePoints_Amount))
-				return ReturnZero;
-		}
+		if (!pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
+			return ReturnZero;
 	}
 
 	if (pExt->CommanderPoints_Amount != 0)
 	{
 		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
-
-		if (pExt->CommanderPoints_Amount < 0)
-		{
-			if (pOwnerExt->CommanderPoints < std::abs(pExt->CommanderPoints_Amount))
-				return ReturnZero;
-		}
+		if (!pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
+			return ReturnZero;
 	}
 
 	return ReturnIsReady;

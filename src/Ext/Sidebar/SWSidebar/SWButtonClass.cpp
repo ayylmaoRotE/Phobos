@@ -87,26 +87,20 @@ bool SWButtonClass::Draw(bool forced)
 		if (!pSWExt->IsAvailable(pCurrent))
 			shouldDarken = true;
 
-		// Check BattlePoints requirements
+		// Check BattlePoints requirements using CanTransact method
 		if (pSWExt->BattlePoints_Amount != 0)
 		{
 			const auto pCurrentExt = HouseExt::ExtMap.Find(pCurrent);
-			if (pSWExt->BattlePoints_Amount < 0)
-			{
-				if (pCurrentExt->BattlePoints < std::abs(pSWExt->BattlePoints_Amount))
-					shouldDarken = true;
-			}
+			if (!pCurrentExt->CanTransactBattlePoints(pSWExt->BattlePoints_Amount))
+				shouldDarken = true;
 		}
 
-		// Check CommanderPoints requirements
+		// Check CommanderPoints requirements using CanTransact method
 		if (pSWExt->CommanderPoints_Amount != 0)
 		{
 			const auto pCurrentExt = HouseExt::ExtMap.Find(pCurrent);
-			if (pSWExt->CommanderPoints_Amount < 0)
-			{
-				if (pCurrentExt->CommanderPoints < std::abs(pSWExt->CommanderPoints_Amount))
-					shouldDarken = true;
-			}
+			if (!pCurrentExt->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount))
+				shouldDarken = true;
 		}
 	}
 
@@ -115,7 +109,10 @@ bool SWButtonClass::Draw(bool forced)
 		shouldDarken = true;
 
 	if (shouldDarken)
-	if (pSuper->IsReady && !pCurrent->CanTransactMoney(pSWExt->Money_Amount)
+	if (pSuper->IsReady && 
+		(!pCurrent->CanTransactMoney(pSWExt->Money_Amount) ||
+		 (pSWExt->BattlePoints_Amount != 0 && !HouseExt::ExtMap.Find(pCurrent)->CanTransactBattlePoints(pSWExt->BattlePoints_Amount)) ||
+		 (pSWExt->CommanderPoints_Amount != 0 && !HouseExt::ExtMap.Find(pCurrent)->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount)))
 		|| (pSWExt->SW_UseAITargeting && AresFunctions::IsTargetConstraintsEligible && !AresFunctions::IsTargetConstraintsEligible(AresFunctions::SWTypeExtMap_Find(pSuper->Type), HouseClass::CurrentPlayer, true)))
 	{
 		RectangleStruct darkenBounds { 0, 0, location.X + this->Width, location.Y + this->Height };
@@ -238,6 +235,16 @@ bool SWButtonClass::LaunchSuper() const
 	{
 		VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds);
 		pSWExt->PrintMessage(pSWExt->Message_InsufficientFunds, pCurrent);
+	}
+	else if (pSWExt->BattlePoints_Amount != 0 && !HouseExt::ExtMap.Find(pCurrent)->CanTransactBattlePoints(pSWExt->BattlePoints_Amount))
+	{
+		VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds); // Reuse insufficient funds sound for now
+		pSWExt->PrintMessage(pSWExt->Message_InsufficientFunds, pCurrent); // Reuse insufficient funds message for now
+	}
+	else if (pSWExt->CommanderPoints_Amount != 0 && !HouseExt::ExtMap.Find(pCurrent)->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount))
+	{
+		VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds); // Reuse insufficient funds sound for now
+		pSWExt->PrintMessage(pSWExt->Message_InsufficientFunds, pCurrent); // Reuse insufficient funds message for now
 	}
 	else if (!pSWExt->SW_UseAITargeting || (AresFunctions::IsTargetConstraintsEligible && AresFunctions::IsTargetConstraintsEligible(AresFunctions::SWTypeExtMap_Find(pSuper->Type), HouseClass::CurrentPlayer, true)))
 	{

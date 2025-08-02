@@ -4,6 +4,7 @@
 #include <BulletClass.h>
 #include <HouseClass.h>
 #include <ScenarioClass.h>
+#include <Ext/House/Body.h>
 #include <AnimTypeClass.h>
 #include <AnimClass.h>
 #include <BitFont.h>
@@ -117,7 +118,10 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 				const auto pSWExt = SWTypeExt::ExtMap.Find(pSuper->Type);
 				const auto cell = CellClass::Coord2Cell(coords);
 
-				if (pHouse->CanTransactMoney(pSWExt->Money_Amount) && (!this->LaunchSW_RealLaunch || (pSuper->IsPresent && pSuper->IsReady && !pSuper->IsSuspended)))
+				if (pHouse->CanTransactMoney(pSWExt->Money_Amount) &&
+					(pSWExt->BattlePoints_Amount == 0 || HouseExt::ExtMap.Find(pHouse)->CanTransactBattlePoints(pSWExt->BattlePoints_Amount)) &&
+					(pSWExt->CommanderPoints_Amount == 0 || HouseExt::ExtMap.Find(pHouse)->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount)) &&
+					(!this->LaunchSW_RealLaunch || (pSuper->IsPresent && pSuper->IsReady && !pSuper->IsSuspended)))
 				{
 					if ((this->LaunchSW_IgnoreInhibitors || !pSWExt->HasInhibitor(pHouse, cell))
 					&& (this->LaunchSW_IgnoreDesignators || pSWExt->HasDesignator(pHouse, cell)))

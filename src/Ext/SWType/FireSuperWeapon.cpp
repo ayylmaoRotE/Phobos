@@ -286,7 +286,10 @@ void SWTypeExt::ExtData::ApplySWNext(SuperClass* pSW, const CellStruct& cell)
 			{
 				const auto pNextTypeExt = SWTypeExt::ExtMap.Find(pSuper->Type);
 				if (!this->SW_Next_RealLaunch ||
-					(pSuper->IsPresent && pSuper->IsReady && !pSuper->IsSuspended && pHouse->CanTransactMoney(pNextTypeExt->Money_Amount)))
+					(pSuper->IsPresent && pSuper->IsReady && !pSuper->IsSuspended && 
+					 pHouse->CanTransactMoney(pNextTypeExt->Money_Amount) &&
+					 (pNextTypeExt->BattlePoints_Amount == 0 || HouseExt::ExtMap.Find(pHouse)->CanTransactBattlePoints(pNextTypeExt->BattlePoints_Amount)) &&
+					 (pNextTypeExt->CommanderPoints_Amount == 0 || HouseExt::ExtMap.Find(pHouse)->CanTransactCommanderPoints(pNextTypeExt->CommanderPoints_Amount))))
 				{
 					if ((this->SW_Next_IgnoreInhibitors || !pNextTypeExt->HasInhibitor(pHouse, cell))
 						&& (this->SW_Next_IgnoreDesignators || pNextTypeExt->HasDesignator(pHouse, cell)))
