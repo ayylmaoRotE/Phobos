@@ -27,6 +27,7 @@ void SWTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->EVA_InsufficientFunds)
 		.Process(this->EVA_SelectTarget)
 		.Process(this->SW_UseAITargeting)
+		.Process(this->SW_AITargetingMode)
 		.Process(this->SW_AutoFire)
 		.Process(this->SW_ManualFire)
 		.Process(this->SW_ShowCameo)
@@ -116,6 +117,7 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->EVA_InsufficientFunds.Read(exINI, pSection, "EVA.InsufficientFunds");
 	this->EVA_SelectTarget.Read(exINI, pSection, "EVA.SelectTarget");
 	this->SW_UseAITargeting.Read(exINI, pSection, "SW.UseAITargeting");
+	this->SW_AITargetingMode.Read(exINI, pSection, "SW.AITargeting");
 	this->SW_AutoFire.Read(exINI, pSection, "SW.AutoFire");
 	this->SW_ManualFire.Read(exINI, pSection, "SW.ManualFire");
 	this->SW_ShowCameo.Read(exINI, pSection, "SW.ShowCameo");

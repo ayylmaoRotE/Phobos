@@ -624,16 +624,18 @@ namespace detail
 	{
 		if (parser.ReadString(pSection, pKey))
 		{
-			static const auto Modes = {
+			static const char* Modes[] = {
 				"none", "nuke", "lightningstorm", "psychicdominator", "paradrop",
 				"geneticmutator", "forceshield", "notarget", "offensive", "stealth",
-				"self", "base", "multimissile", "hunterseeker", "enemybase" };
+				"self", "base", "multimissile", "hunterseeker", "enemybase", "ironcurtain",
+				"attack", "lowpower", "lowpowerattack", "droppod", "lightningrandom",
+				"launchsite", "findauxtechno", "ioncannon" };
+				
+			constexpr size_t ModesCount = sizeof(Modes) / sizeof(Modes[0]);
 
-			auto it = Modes.begin();
-
-			for (auto i = 0u; i < Modes.size(); ++i)
+			for (auto i = 0u; i < ModesCount; ++i)
 			{
-				if (_strcmpi(parser.value(), *it++) == 0)
+				if (_strcmpi(parser.value(), Modes[i]) == 0)
 				{
 					value = static_cast<SuperWeaponAITargetingMode>(i);
 					return true;

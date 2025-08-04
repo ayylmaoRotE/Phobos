@@ -30,6 +30,7 @@ public:
 		ValueableIdx<VoxClass> EVA_InsufficientFunds;
 		ValueableIdx<VoxClass> EVA_SelectTarget;
 		Valueable<bool> SW_UseAITargeting;
+		Valueable<SuperWeaponAITargetingMode> SW_AITargetingMode;
 		Valueable<bool> SW_AutoFire;
 		Valueable<bool> SW_ManualFire;
 		Valueable<bool> SW_ShowCameo;
@@ -124,6 +125,7 @@ public:
 			, EVA_InsufficientFunds { -1 }
 			, EVA_SelectTarget { -1 }
 			, SW_UseAITargeting { false }
+			, SW_AITargetingMode { SuperWeaponAITargetingMode::None }
 			, SW_AutoFire { false }
 			, SW_ManualFire { true }
 			, SW_ShowCameo { true }
@@ -224,6 +226,9 @@ public:
 		void ApplyCommanderPoints(SuperClass* pSW);
 
 		void ApplyLinkedSW(SuperClass* pSW);
+
+		CellStruct GetAuxTechnoTarget(HouseClass* pHouse) const;
+		bool ShouldUseAITargeting() const;
 
 		virtual void LoadFromINIFile(CCINIClass* pINI) override;
 		virtual void Initialize() override;

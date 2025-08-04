@@ -318,3 +318,33 @@ void SWTypeExt::ExtData::PrintMessage(const CSFText& message, HouseClass* pFirer
 	// print the message
 	MessageListClass::Instance.PrintMessage(message, RulesClass::Instance->MessageDelay, color);
 }
+
+CellStruct SWTypeExt::ExtData::GetAuxTechnoTarget(HouseClass* pHouse) const
+{
+	if (!this->SW_AuxTechnos.empty())
+	{
+		for (auto pTechno : TechnoClass::Array)
+		{
+			if (pTechno->IsAlive && pTechno->Health && !pTechno->InLimbo && !pTechno->Deactivated)
+			{
+				auto nLoc = pTechno->GetCoords();
+				auto nLocCell = CellClass::Coord2Cell(nLoc);
+
+				if (nLoc == CoordStruct::Empty || nLocCell == CellStruct::Empty)
+					continue;
+
+				if (this->SW_AuxTechnos.Contains(pTechno->GetTechnoType()))
+				{
+					return nLocCell;
+				}
+			}
+		}
+	}
+
+	return CellStruct::Empty;
+}
+
+bool SWTypeExt::ExtData::ShouldUseAITargeting() const
+{
+	return this->SW_UseAITargeting && this->SW_AITargetingMode == SuperWeaponAITargetingMode::FindAuxTechno;
+}

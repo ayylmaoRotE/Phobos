@@ -367,3 +367,32 @@ DEFINE_HOOK(0x4FD77C, ExpertAI_SuperWeaponAI_RecheckIsReady, 0x5)
 
 	return 0;
 }
+
+// Hook to intercept AutoFire superweapons and provide AI targeting for FindAuxTechno mode
+DEFINE_HOOK(0x6CB920, SuperClass_ClickFire, 0x6)
+{
+	GET(SuperClass*, pSuper, ECX);
+	GET_STACK(CellStruct*, pCell, 0x4);
+	GET_STACK(bool, isPlayer, 0x8);
+
+	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+	
+	// Only handle AutoFire superweapons with FindAuxTechno targeting
+	if (pExt->SW_AutoFire && pExt->ShouldUseAITargeting())
+	{
+		// Get target using FindAuxTechno AI targeting
+		CellStruct targetCell = pExt->GetAuxTechnoTarget(pSuper->Owner);
+		
+		if (targetCell != CellStruct::Empty)
+		{
+			*pCell = targetCell;
+		}
+		else
+		{
+			// No valid target found, don't fire
+			return 0x6CB97E; // Skip firing
+		}
+	}
+
+	return 0;
+}
