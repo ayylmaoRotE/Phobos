@@ -90,6 +90,7 @@
     <ClCompile Include="src\Locomotion\TestLocomotionClass.cpp" />
     <ClCompile Include="src\Misc\Hooks.Gamespeed.cpp" />
     <ClCompile Include="src\Misc\Hooks.Ares.cpp" />
+    <ClCompile Include="src\Misc\Debug.CrashDiagnostics.cpp" />
     <ClCompile Include="src\Misc\Hooks.Crates.cpp" />
     <ClCompile Include="src\Misc\Hooks.LightEffects.cpp" />
     <ClCompile Include="src\Misc\Hooks.VeinholeMonster.cpp" />

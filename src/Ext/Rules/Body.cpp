@@ -302,6 +302,7 @@ void RulesExt::ExtData::LoadBeforeTypeData(RulesClass* pThis, CCINIClass* pINI)
 	this->BattlePoints_DefaultFriendlyValue.Read(exINI, GameStrings::General, "BattlePoints.DefaultFriendlyValue");
 
 	this->CommanderPoints.Read(exINI, GameStrings::General, "CommanderPoints");
+	// this->TeamRetaliate.Read(exINI, GameStrings::General, "TeamRetaliate"); // Temporarily disabled
 
 	// Section AITargetTypes
 	int itemsCount = pINI->GetKeyCount("AITargetTypes");
@@ -558,6 +559,7 @@ void RulesExt::ExtData::Serialize(T& Stm)
 		.Process(this->BattlePoints_DefaultValue)
 		.Process(this->BattlePoints_DefaultFriendlyValue)
 		.Process(this->CommanderPoints)
+		// .Process(this->TeamRetaliate) // Temporarily disabled
 		;
 }
 

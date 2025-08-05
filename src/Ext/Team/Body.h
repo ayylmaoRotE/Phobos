@@ -33,6 +33,11 @@ public:
 		FootClass* TeamLeader;
 		std::vector<ScriptClass*> PreviousScriptList;
 
+		// TeamRetaliate target persistence - temporarily disabled for testing
+		// CDTimerClass RetaliateTargetPersistTimer;
+		// AbstractClass* RetaliateCurrentTarget;
+		// int RetaliateTargetSwitchDelay;
+
 		ExtData(TeamClass* OwnerObject) : Extension<TeamClass>(OwnerObject)
 			, WaitNoTargetAttempts { 0 }
 			, NextSuccessWeightAward { 0 }
@@ -47,6 +52,9 @@ public:
 			, ForceJump_RepeatMode { false }
 			, TeamLeader { nullptr }
 			, PreviousScriptList { }
+			// , RetaliateTargetPersistTimer { }
+			// , RetaliateCurrentTarget { nullptr }
+			// , RetaliateTargetSwitchDelay { 600 }
 		{ }
 
 		virtual ~ExtData() = default;

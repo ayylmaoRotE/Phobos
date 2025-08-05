@@ -255,6 +255,7 @@ public:
 		Nullable<int> BattlePoints_DefaultFriendlyValue;
 
 		Nullable<bool> CommanderPoints;
+		// Valueable<bool> TeamRetaliate; // Temporarily disabled for testing
 
 		ExtData(RulesClass* OwnerObject) : Extension<RulesClass>(OwnerObject)
 			, Storage_TiberiumIndex { -1 }
@@ -455,6 +456,7 @@ public:
 			, BattlePoints_DefaultFriendlyValue {}
 
 			, CommanderPoints {}
+			// , TeamRetaliate { false } // Temporarily disabled for testing
 		{ }
 
 		virtual ~ExtData() = default;

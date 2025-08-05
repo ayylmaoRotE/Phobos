@@ -22,6 +22,9 @@ void TeamExt::ExtData::Serialize(T& Stm)
 		.Process(this->ForceJump_RepeatMode)
 		.Process(this->TeamLeader)
 		.Process(this->PreviousScriptList)
+		// .Process(this->RetaliateTargetPersistTimer)
+		// .Process(this->RetaliateCurrentTarget)
+		// .Process(this->RetaliateTargetSwitchDelay)
 		;
 }
 
@@ -39,7 +42,14 @@ void TeamExt::ExtData::SaveToStream(PhobosStreamWriter& Stm)
 
 void TeamExt::ExtData::InvalidatePointer(void* ptr, bool bRemoved)
 {
+	// Log pointer invalidation for debugging - temporarily disabled
+	// if (ptr == RetaliateCurrentTarget && RetaliateCurrentTarget)
+	// {
+	//	Debug::Log("[MEMORY] TeamRetaliate target %p invalidated (removed=%d)\n", ptr, bRemoved);
+	// }
+	
 	AnnounceInvalidPointer(TeamLeader, ptr);
+	// AnnounceInvalidPointer(RetaliateCurrentTarget, ptr);
 }
 
 // =============================

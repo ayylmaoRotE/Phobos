@@ -13,8 +13,14 @@ DEFINE_HOOK(0x6CC390, SuperClass_Launch, 0x6)
 	GET_STACK(CellStruct const* const, pCell, 0x4);
 	GET_STACK(bool const, isPlayer, 0x8);
 
+	// Safety checks to prevent memory corruption
+	if (!pSuper || !pSuper->Type || !pSuper->Owner)
+		return 0x6CDE40;
+
 	// Add validation directly at launch point
 	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+	if (!pExt)
+		return 0x6CDE40;
 	
 	// Prevent every-frame spam when RechargeTimer is -1
 	if (pExt->SW_AutoFire && pSuper->RechargeTimer.GetTimeLeft() == -1)
@@ -27,6 +33,8 @@ DEFINE_HOOK(0x6CC390, SuperClass_Launch, 0x6)
 	if (pExt->SW_AutoFire)
 	{
 		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
+		if (!pOwnerExt)
+			return 0x6CDE40;
 		
 		// Check BattlePoints requirements
 		if (pExt->BattlePoints_Amount != 0)
@@ -343,6 +351,10 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 
 	enum{ ReturnIsReady = 0x6CC37D, ReturnZero = 0x6CC381, SkipAll = 0x6CC383};
 
+	// Safety checks to prevent memory corruption
+	if (!pSuper || !pSuper->Type || !pSuper->Owner)
+		return ReturnZero;
+
 	if (pSuper->IsSuspended)
 		return ReturnZero;
 
@@ -353,6 +365,8 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 	}
 
 	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+	if (!pExt)
+		return ReturnZero;
 
 
 	// Check SW_AuxTechnos availability
@@ -363,6 +377,8 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 	if (pExt->SW_AutoFire)
 	{
 		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
+		if (!pOwnerExt)
+			return ReturnZero;
 		
 		// Check BattlePoints requirements
 		if (pExt->BattlePoints_Amount != 0)
@@ -396,14 +412,14 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 	if (pExt->BattlePoints_Amount != 0)
 	{
 		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
-		if (!pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
+		if (!pOwnerExt || !pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
 			return ReturnZero;
 	}
 
 	if (pExt->CommanderPoints_Amount != 0)
 	{
 		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
-		if (!pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
+		if (!pOwnerExt || !pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
 			return ReturnZero;
 	}
 
