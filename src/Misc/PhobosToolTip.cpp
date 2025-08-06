@@ -208,7 +208,6 @@ void PhobosToolTip::HelpText_Super(int swidx)
 		showSth = true;
 	}
 
-	int rechargeTime = TickTimeToSeconds(pSuper->GetRechargeTime());
 	if (rechargeTime > 0)
 	{
 		if (!showSth)

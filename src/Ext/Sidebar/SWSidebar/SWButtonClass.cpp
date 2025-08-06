@@ -244,7 +244,6 @@ bool SWButtonClass::LaunchSuper() const
 		pSWExt->PrintMessage(pSWExt->Message_InsufficientFunds, pCurrent); // Reuse insufficient funds message for now
 	}
 	else if (!pSWExt->SW_UseAITargeting || (AresFunctions::IsTargetConstraintsEligible && AresFunctions::IsTargetConstraintsEligible(AresFunctions::SWTypeExtMap_Find(pSuper->Type), HouseClass::CurrentPlayer, true)))
-	else if (!pSWExt->SW_UseAITargeting || (AresFunctions::IsTargetConstraintsEligible && AresFunctions::IsTargetConstraintsEligible(AresFunctions::SWTypeExtMap_Find(pType), HouseClass::CurrentPlayer, true)))
 	{
 		if (!manual && !unstoppable)
 		{

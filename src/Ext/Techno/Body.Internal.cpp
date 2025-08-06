@@ -27,13 +27,9 @@ void TechnoExt::ObjectKilledBy(TechnoClass* pVictim, TechnoClass* pKiller, House
 
 	if (pKiller)
 	{
-		pObjectKiller = ((pKiller->GetTechnoType()->Spawned || pKiller->GetTechnoType()->MissileSpawn) && pKiller->SpawnOwner) ?
+		auto const pKillerType = pKiller->GetTechnoType();
+		pObjectKiller = ((pKillerType->Spawned || pKillerType->MissileSpawn) && pKiller->SpawnOwner) ?
 			pKiller->SpawnOwner : pKiller;
-void TechnoExt::ObjectKilledBy(TechnoClass* pVictim, TechnoClass* pKiller)
-{
-	auto const pKillerType = pKiller->GetTechnoType();
-	auto const pObjectKiller = ((pKillerType->Spawned || pKillerType->MissileSpawn) && pKiller->SpawnOwner)
-		? pKiller->SpawnOwner : pKiller;
 
 		if (!pObjectKiller)
 			return;
