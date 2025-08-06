@@ -97,6 +97,8 @@ public:
 
 		Valueable<bool> Refinery_UseNormalActiveAnim;
 
+		ValueableVector<bool> HasPowerUpAnim;
+
 
 		Nullable<bool> BattlePointsCollector;
 		Nullable<bool> CommanderPointsCollector;
@@ -162,6 +164,7 @@ public:
 			, BunkerWallsDownSound {}
 			, BuildingRepairedSound {}
 			, Refinery_UseNormalActiveAnim { false }
+			, HasPowerUpAnim {}
 			, BattlePointsCollector {}
 			, CommanderPointsCollector {}
 		{ }
