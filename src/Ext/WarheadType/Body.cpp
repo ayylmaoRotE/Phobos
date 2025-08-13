@@ -141,6 +141,17 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->TransactMoney_Display_Houses.Read(exINI, pSection, "TransactMoney.Display.Houses");
 	this->TransactMoney_Display_AtFirer.Read(exINI, pSection, "TransactMoney.Display.AtFirer");
 	this->TransactMoney_Display_Offset.Read(exINI, pSection, "TransactMoney.Display.Offset");
+	
+	this->Transact.Read(exINI, pSection, "Transact");
+	this->Transact_SpreadAmongTargets.Read(exINI, pSection, "Transact.SpreadAmongTargets");
+	this->Transact_Experience_Source_Flat.Read(exINI, pSection, "Transact.Experience.Source.Flat");
+	this->Transact_Experience_Source_Percent.Read(exINI, pSection, "Transact.Experience.Source.Percent");
+	this->Transact_Experience_Source_Percent_CalcFromTarget.Read(exINI, pSection, "Transact.Experience.Source.Percent.CalcFromTarget");
+	this->Transact_Experience_Target_Flat.Read(exINI, pSection, "Transact.Experience.Target.Flat");
+	this->Transact_Experience_Target_Percent.Read(exINI, pSection, "Transact.Experience.Target.Percent");
+	this->Transact_Experience_Target_Percent_CalcFromSource.Read(exINI, pSection, "Transact.Experience.Target.Percent.CalcFromSource");
+	this->Transact_Experience_IgnoreNotTrainable.Read(exINI, pSection, "Transact.Experience.IgnoreNotTrainable");
+	
 	this->SplashList.Read(exINI, pSection, "SplashList");
 	this->SplashList_PickRandom.Read(exINI, pSection, "SplashList.PickRandom");
 	this->SplashList_CreateAll.Read(exINI, pSection, "SplashList.CreateAll");
@@ -408,6 +419,16 @@ void WarheadTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->TransactMoney_Display_Houses)
 		.Process(this->TransactMoney_Display_AtFirer)
 		.Process(this->TransactMoney_Display_Offset)
+		.Process(this->Transact)
+		.Process(this->Transact_SpreadAmongTargets)
+		.Process(this->Transact_Experience_Source_Flat)
+		.Process(this->Transact_Experience_Source_Percent)
+		.Process(this->Transact_Experience_Source_Percent_CalcFromTarget)
+		.Process(this->Transact_Experience_Target_Flat)
+		.Process(this->Transact_Experience_Target_Percent)
+		.Process(this->Transact_Experience_Target_Percent_CalcFromSource)
+		.Process(this->Transact_Experience_IgnoreNotTrainable)
+		.Process(this->IntendedTarget)
 		.Process(this->SplashList)
 		.Process(this->SplashList_PickRandom)
 		.Process(this->SplashList_CreateAll)
@@ -591,6 +612,32 @@ void WarheadTypeExt::ExtData::SaveToStream(PhobosStreamWriter& Stm)
 {
 	Extension<WarheadTypeClass>::SaveToStream(Stm);
 	this->Serialize(Stm);
+}
+
+bool WarheadTypeExt::ExtData::CanDealDamage(TechnoClass* pTechno, bool Bypass, bool SkipVerses, bool checkImmune, bool checkLimbo) const
+{
+	if (!pTechno)
+		return false;
+
+	if (checkLimbo && pTechno->InLimbo)
+		return false;
+
+	if (!pTechno->IsAlive || !pTechno->Health || pTechno->IsSinking || pTechno->IsCrashing)
+		return false;
+
+	const auto pType = pTechno->GetTechnoType();
+
+	if (checkImmune && pType->Immune)
+		return false;
+
+	return true;
+}
+
+bool WarheadTypeExt::ExtData::CanDealDamage(TechnoClass* pTechno, int damageIn, int distanceFromEpicenter, int& DamageResult, bool effectsRequireDamage) const
+{
+	// Simplified implementation
+	DamageResult = damageIn;
+	return CanDealDamage(pTechno, false, false, true, true);
 }
 
 bool WarheadTypeExt::LoadGlobals(PhobosStreamReader& Stm)

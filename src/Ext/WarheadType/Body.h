@@ -4,10 +4,13 @@
 #include <Helpers/Macro.h>
 #include <Utilities/Container.h>
 #include <Utilities/TemplateDef.h>
+#include <Utilities/Enum.h>
 #include <New/Type/ShieldTypeClass.h>
 #include <Ext/Bullet/Body.h>
 #include <Ext/Techno/Body.h>
 #include <New/Type/Affiliated/TypeConvertGroup.h>
+
+typedef std::vector<std::tuple< std::vector<int>, std::vector<int>, TransactValueType>> TransactData;
 
 class WarheadTypeExt
 {
@@ -28,6 +31,19 @@ public:
 		Valueable<AffectedHouse> TransactMoney_Display_Houses;
 		Valueable<bool> TransactMoney_Display_AtFirer;
 		Valueable<Point2D> TransactMoney_Display_Offset;
+		
+		Valueable<bool> Transact;
+		Valueable<bool> Transact_SpreadAmongTargets;
+		Valueable<int> Transact_Experience_Source_Flat;
+		Valueable<double> Transact_Experience_Source_Percent;
+		Valueable<bool> Transact_Experience_Source_Percent_CalcFromTarget;
+		Valueable<int> Transact_Experience_Target_Flat;
+		Valueable<double> Transact_Experience_Target_Percent;
+		Valueable<bool> Transact_Experience_Target_Percent_CalcFromSource;
+		Valueable<bool> Transact_Experience_IgnoreNotTrainable;
+		
+		TechnoClass* IntendedTarget;
+		
 		NullableVector<AnimTypeClass*> SplashList;
 		Valueable<bool> SplashList_PickRandom;
 		Valueable<bool> SplashList_CreateAll;
@@ -221,6 +237,16 @@ public:
 			, TransactMoney_Display_Houses { AffectedHouse::All }
 			, TransactMoney_Display_AtFirer { false }
 			, TransactMoney_Display_Offset { { 0, 0 } }
+			, Transact { false }
+			, Transact_SpreadAmongTargets { false }
+			, Transact_Experience_Source_Flat { 0 }
+			, Transact_Experience_Source_Percent { 0.0 }
+			, Transact_Experience_Source_Percent_CalcFromTarget { false }
+			, Transact_Experience_Target_Flat { 0 }
+			, Transact_Experience_Target_Percent { 0.0 }
+			, Transact_Experience_Target_Percent_CalcFromSource { false }
+			, Transact_Experience_IgnoreNotTrainable { true }
+			, IntendedTarget { nullptr }
 			, SplashList {}
 			, SplashList_PickRandom { false }
 			, SplashList_CreateAll { false }
@@ -434,6 +460,16 @@ public:
 		void ApplyAttachEffects(TechnoClass* pTarget, HouseClass* pInvokerHouse, TechnoClass* pInvoker);
 		void ApplyBuildingUndeploy(TechnoClass* pTarget);
 		double GetCritChance(TechnoClass* pFirer) const;
+		
+		// Transact.cpp
+		void TransactOnOneUnit(TechnoClass* pTarget, TechnoClass* pOwner, int targets);
+		void TransactOnAllUnits(std::vector<TechnoClass*>& nVec, HouseClass* pHouse, TechnoClass* pOwner);
+		int TransactGetValue(TechnoClass* pTarget, TechnoClass* pOwner, int flat, double percent, bool calcFromTarget);
+		TransactData TransactGetSourceAndTarget(TechnoClass* pTarget, TechnoTypeClass* pTargetType, TechnoClass* pOwner, TechnoTypeClass* pOwnerType, int targets);
+		int TransactOneValue(TechnoClass* pTechno, TechnoTypeClass* pTechnoType, int transactValue, TransactValueType valueType);
+		
+		bool CanDealDamage(TechnoClass* pTechno, int damageIn, int distanceFromEpicenter, int& DamageResult, bool effectsRequireDamage = false) const;
+		bool CanDealDamage(TechnoClass* pTechno, bool Bypass = false, bool SkipVerses = false, bool checkImmune = true, bool checkLimbo = true) const;
 	};
 
 	class ExtContainer final : public Container<WarheadTypeExt>

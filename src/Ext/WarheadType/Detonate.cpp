@@ -34,6 +34,7 @@ static void __stdcall Sub_4ADCD0(char a1, DWORD a2)
 
 void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, BulletExt::ExtData* pBulletExt, CoordStruct coords)
 {
+
 	auto const pBullet = pBulletExt ? pBulletExt->OwnerObject() : nullptr;
 
 	if (pBulletExt && pBulletExt->InterceptorTechnoType)
@@ -152,7 +153,8 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 	this->Crit_Active = false;
 	this->Crit_CurrentChance = this->GetCritChance(pOwner);
 
-	if (this->PossibleCellSpreadDetonate || this->Crit_CurrentChance > 0.0)
+
+	if (this->PossibleCellSpreadDetonate || this->Crit_CurrentChance > 0.0 || this->Transact)
 	{
 		if (!this->Crit_ApplyChancePerTarget)
 			this->Crit_RandomBuffer = ScenarioClass::Instance->Random.RandomDouble();
@@ -168,25 +170,77 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 		const bool bulletWasIntercepted = pBulletExt && (pBulletExt->InterceptedStatus & InterceptedStatus::Intercepted);
 		const float cellSpread = this->OwnerObject()->CellSpread;
 
-		if (cellSpread)
+		if (std::abs(cellSpread) >= 0.1f)
 		{
-			for (auto const pTarget : Helpers::Alex::getCellSpreadItems(coords, cellSpread, true))
+			auto targets = Helpers::Alex::getCellSpreadItems(coords, cellSpread, true);
+
+			for (auto const pTarget : targets)
 				this->DetonateOnOneUnit(pHouse, pTarget, pOwner, bulletWasIntercepted);
-		}
-		else if (pBullet)
-		{
-			if (auto const pTarget = abstract_cast<TechnoClass*>(pBullet->Target))
+
+			if (this->Transact)
 			{
-				// Jun 2, 2024 - Starkku: We should only detonate on the target if the bullet, at the moment of detonation is within acceptable distance of the target.
-				// Ares uses 64 leptons / quarter of a cell as a tolerance, so for sake of consistency we're gonna do the same here.
-				if (pBullet->DistanceFrom(pTarget) < Unsorted::LeptonsPerCell / 4.0)
-					this->DetonateOnOneUnit(pHouse, pTarget, pOwner, bulletWasIntercepted);
+				std::vector<TechnoClass*> transactTargets(targets.begin(), targets.end());
+				this->TransactOnAllUnits(transactTargets, pHouse, pOwner);
 			}
 		}
-		else if (this->DamageAreaTarget)
+		else if (pBullet && pBullet->Target)
 		{
-			if (coords.DistanceFrom(this->DamageAreaTarget->GetCoords()) < Unsorted::LeptonsPerCell / 4.0)
-				this->DetonateOnOneUnit(pHouse, this->DamageAreaTarget, pOwner, bulletWasIntercepted);
+			if (pBullet->DistanceFrom(pBullet->Target) < Unsorted::LeptonsPerCell / 4) {
+				switch (pBullet->Target->WhatAmI())
+				{
+				case BuildingClass::AbsID:
+				case AircraftClass::AbsID:
+				case UnitClass::AbsID:
+				case InfantryClass::AbsID:
+				{
+					const auto Eligible = [&](TechnoClass* const pTech) -> TechnoClass*
+						{
+							if (CanDealDamage(pTech) &&
+								CanTargetHouse(pHouse, pTech) &&
+								pTech->GetTechnoType()->Trainable
+								) return pTech;
+
+							return nullptr;
+						};
+
+					this->DetonateOnOneUnit(pHouse, static_cast<TechnoClass*>(pBullet->Target), pOwner, bulletWasIntercepted);
+
+					if (this->Transact)
+					{
+						this->TransactOnOneUnit(Eligible(static_cast<TechnoClass*>(pBullet->Target)), pOwner, 1);
+					}
+
+				}break;
+				case CellClass::AbsID:
+				{
+					if (this->Transact)
+						this->TransactOnOneUnit(nullptr, pOwner, 1);
+				}break;
+				default:
+					break;
+				}
+			}
+		}
+		else if (auto pIntended = this->IntendedTarget)
+		{
+			if (coords.DistanceFrom(pIntended->GetCoords()) < double(Unsorted::LeptonsPerCell / 4)) {
+				this->DetonateOnOneUnit(pHouse, pIntended, pOwner, bulletWasIntercepted);
+
+				if (this->Transact) {
+					const auto NotEligible = [this, pHouse, pOwner](TechnoClass* const pTech) {
+						if (!CanDealDamage(pTech))
+							return true;
+
+						if (!pTech->GetTechnoType()->Trainable && this->Transact_Experience_IgnoreNotTrainable)
+							return true;
+
+						return !CanTargetHouse(pHouse, pTech);
+					};
+
+					std::vector<TechnoClass*> targets = { pIntended };
+					this->TransactOnAllUnits(targets, pHouse, pOwner);
+				}
+			}
 		}
 	}
 }

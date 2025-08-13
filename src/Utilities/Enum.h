@@ -378,3 +378,9 @@ public:
 		return false;
 	}
 };
+
+enum class TransactValueType : int
+{
+	Experience = 0,
+	// Other....
+};
