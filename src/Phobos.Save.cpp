@@ -14,11 +14,12 @@
 #include <Utilities/Debug.h>
 
 bool Phobos::ShouldSave = false;
+bool Phobos::WasGameSaved = false;
 std::wstring Phobos::CustomGameSaveDescription {};
 
 void Phobos::ScheduleGameSave(const std::wstring& description)
 {
-	ScenarioClass::WasGameSaved = false;
+	Phobos::WasGameSaved = false;
 	Phobos::ShouldSave = true;
 
 	if (SessionClass::IsCampaign())
@@ -215,9 +216,9 @@ DEFINE_HOOK(0x55DBCD, MainLoop_SaveGame, 0x6)
 	// This happens right before LogicClass::Update()
 	enum { SkipSave = 0x55DC99, InitialSave = 0x55DBE6 };
 
-	if (!ScenarioClass::WasGameSaved)
+	if (!Phobos::WasGameSaved)
 	{
-		ScenarioClass::WasGameSaved = true;
+		Phobos::WasGameSaved = true;
 		if (Phobos::ShouldSave)
 			Phobos::PassiveSaveGame();
 		else if (Phobos::Config::SaveGameOnScenarioStart && SessionClass::IsCampaign())

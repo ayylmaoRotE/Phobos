@@ -614,6 +614,8 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->ImmuneToCrit.Read(exINI, pSection, "ImmuneToCrit");
 	this->MultiMindControl_ReleaseVictim.Read(exINI, pSection, "MultiMindControl.ReleaseVictim");
 	this->NoManualMove.Read(exINI, pSection, "NoManualMove");
+	this->AllowFire_IroncurtainedTarget.Read(exINI, pSection, "Firing.AllowICedTargetForAI");
+	this->IsDummy.Read(exINI, pSection, "Dummy");
 	this->InitialStrength.Read(exINI, pSection, "InitialStrength");
 	if (this->InitialStrength.isset())
 		this->InitialStrength = Math::clamp(this->InitialStrength, 1, pThis->Strength);
@@ -1251,6 +1253,8 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->MultiMindControl_ReleaseVictim)
 		.Process(this->CameoPriority)
 		.Process(this->NoManualMove)
+		.Process(this->AllowFire_IroncurtainedTarget)
+		.Process(this->IsDummy)
 		.Process(this->InitialStrength)
 		.Process(this->ReloadInTransport)
 		.Process(this->ForbidParallelAIQueues)

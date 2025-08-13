@@ -228,6 +228,8 @@ public:
 		Valueable<bool> DistributeTargetingFrame;
 		Valueable<bool> DistributeTargetingFrame_AIOnly;
 
+		Valueable<bool> AutoAttackICedTarget;
+
 		Valueable<bool> BuildingWaypoints;
 		Valueable<bool> BuildingTypeSelectable;
 

@@ -59,6 +59,8 @@ public:
 		Valueable<bool> MultiMindControl_ReleaseVictim;
 		Valueable<int> CameoPriority;
 		Valueable<bool> NoManualMove;
+		Nullable<bool> AllowFire_IroncurtainedTarget;
+		Valueable<bool> IsDummy;
 		Nullable<int> InitialStrength;
 		Valueable<bool> ReloadInTransport;
 		Valueable<bool> ForbidParallelAIQueues;

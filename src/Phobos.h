@@ -33,6 +33,7 @@ public:
 	static bool DisplayDamageNumbers;
 	static bool IsLoadingSaveGame;
 	static bool ShouldSave;
+	static bool WasGameSaved;
 	static std::wstring CustomGameSaveDescription;
 	static void ScheduleGameSave(const std::wstring& description);
 	static void PassiveSaveGame();
