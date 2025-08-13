@@ -957,6 +957,8 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 
 	this->BattlePoints.Read(exINI, pSection, "BattlePoints");
 
+	this->InfantryAutoDeploy.Read(exINI, pSection, "InfantryAutoDeploy");
+
 	// Ares 0.2
 	this->RadarJamRadius.Read(exINI, pSection, "RadarJamRadius");
 
@@ -1591,6 +1593,8 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->VoiceEliteWeaponAttacks)
 
 		.Process(this->BattlePoints)
+
+		.Process(this->InfantryAutoDeploy)
 		;
 }
 void TechnoTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)

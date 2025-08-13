@@ -259,6 +259,8 @@ public:
 		Nullable<bool> CommanderPoints;
 		// Valueable<bool> TeamRetaliate; // Temporarily disabled for testing
 
+		Valueable<bool> InfantryAutoDeploy;
+
 		ExtData(RulesClass* OwnerObject) : Extension<RulesClass>(OwnerObject)
 			, Storage_TiberiumIndex { -1 }
 			, HarvesterDumpAmount { 0.0f }
@@ -461,6 +463,7 @@ public:
 			// , TeamRetaliate { false } // Temporarily disabled for testing
 
 			, Parasite_GrappleAnim {}
+			, InfantryAutoDeploy { false }
 		{ }
 
 		virtual ~ExtData() = default;

@@ -49,6 +49,8 @@ This page lists all the individual contributions to the project by their author.
   - Voxel light source position customization
   - `UseFixedVoxelLighting`
   - Warhead activation target health thresholds
+  - MP saves support for quicksave command and savegame trigger action
+  - Ported XNA CnCNet Client MP save handling
 - **Uranusian (Thrifinesma)**:
   - Mind Control enhancement
   - Custom warhead splash list
@@ -589,6 +591,7 @@ This page lists all the individual contributions to the project by their author.
   - Skip target scanning function calling for unarmed technos (code)
   - Force techno targeting in distributed frames to improve performance
   - Use `SkipCrushSlowdown=true` to avoid the bug related to `Accelerates=true` and `MovementZone=CrushAll`
+  - Auto deploy for GI-like infantry
 - **solar-III (凤九歌)**
   - Target scanning delay customization (documentation)
   - Skip target scanning function calling for unarmed technos (documentation)
