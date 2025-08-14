@@ -89,6 +89,9 @@ public:
 
 		int AttackMoveFollowerTempCount;
 
+		// ExtraFire ROF timers - not serialized, reset on load
+		std::map<WeaponTypeClass*, CDTimerClass> ExtraFireTimers;
+
 		ExtData(TechnoClass* OwnerObject) : Extension<TechnoClass>(OwnerObject)
 			, TypeExtData { nullptr }
 			, Shield {}
@@ -146,6 +149,7 @@ public:
 			, TintIntensityAllies { 0 }
 			, TintIntensityEnemies { 0 }
 			, AttackMoveFollowerTempCount { 0 }
+			, ExtraFireTimers {}
 		{ }
 
 		void OnEarlyUpdate();

@@ -162,6 +162,18 @@ public:
 		Valueable<int> NoAmmoWeapon;
 		Valueable<int> NoAmmoAmount;
 
+		// ExtraFire weapons
+		ValueableVector<WeaponTypeClass*> ExtraFire_Primary;
+		ValueableVector<WeaponTypeClass*> ExtraFire_Secondary;
+		NullableVector<WeaponTypeClass*> ExtraFire_ElitePrimary;
+		NullableVector<WeaponTypeClass*> ExtraFire_EliteSecondary;
+		
+		// ExtraFire FLH coordinates
+		Valueable<CoordStruct> ExtraFire_PrimaryFLH;
+		Valueable<CoordStruct> ExtraFire_SecondaryFLH;
+		Nullable<CoordStruct> ExtraFire_ElitePrimaryFLH;
+		Nullable<CoordStruct> ExtraFire_EliteSecondaryFLH;
+
 		Valueable<bool> JumpjetRotateOnCrash;
 		Nullable<int> ShadowSizeCharacteristicHeight;
 
@@ -506,6 +518,14 @@ public:
 			, NoSecondaryWeaponFallback_AllowAA { false }
 			, NoAmmoWeapon { -1 }
 			, NoAmmoAmount { 0 }
+			, ExtraFire_Primary {}
+			, ExtraFire_Secondary {}
+			, ExtraFire_ElitePrimary {}
+			, ExtraFire_EliteSecondary {}
+			, ExtraFire_PrimaryFLH { { 0, 0, 0 } }
+			, ExtraFire_SecondaryFLH { { 0, 0, 0 } }
+			, ExtraFire_ElitePrimaryFLH {}
+			, ExtraFire_EliteSecondaryFLH {}
 			, JumpjetRotateOnCrash { true }
 			, ShadowSizeCharacteristicHeight { }
 			, DeployingAnim_AllowAnyDirection { false }
@@ -792,6 +812,9 @@ public:
 
 			, InfantryAutoDeploy {}
 		{ }
+
+		void FireExtraWeapons(TechnoClass* pThis, AbstractClass* pTarget, int weaponIndex) const;
+		static bool ExtraFireInProgress;
 
 		virtual ~ExtData() = default;
 		virtual void LoadFromINIFile(CCINIClass* pINI) override;

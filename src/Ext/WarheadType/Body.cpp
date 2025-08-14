@@ -424,6 +424,13 @@ void WarheadTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->TransactMoney_Display_Houses)
 		.Process(this->TransactMoney_Display_AtFirer)
 		.Process(this->TransactMoney_Display_Offset)
+		
+		// StealMoney serialization
+		.Process(this->StealMoney_Amount)
+		.Process(this->StealMoney_Display)
+		.Process(this->StealMoney_Display_Houses)
+		.Process(this->StealMoney_Display_Offset)
+		
 		.Process(this->Transact)
 		.Process(this->Transact_SpreadAmongTargets)
 		.Process(this->Transact_Experience_Source_Flat)

@@ -6,17 +6,21 @@
 #include <JumpjetLocomotionClass.h>
 #include <TechnoTypeClass.h>
 #include <StringTable.h>
+#include <ScenarioClass.h>
+#include <VocClass.h>
 
 #include <Ext/Anim/Body.h>
 #include <Ext/BuildingType/Body.h>
 #include <Ext/BulletType/Body.h>
 #include <Ext/Techno/Body.h>
+#include <Ext/WeaponType/Body.h>
 #include <New/Type/InsigniaTypeClass.h>
 
 #include <Utilities/GeneralUtils.h>
 
 TechnoTypeExt::ExtContainer TechnoTypeExt::ExtMap;
 bool TechnoTypeExt::SelectWeaponMutex = false;
+bool TechnoTypeExt::ExtData::ExtraFireInProgress = false;
 
 void TechnoTypeExt::ExtData::ApplyTurretOffset(Matrix3D* mtx, double factor)
 {
@@ -975,6 +979,17 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->NoAmmoWeapon.Read(exINI, pSection, "NoAmmoWeapon");
 	this->NoAmmoAmount.Read(exINI, pSection, "NoAmmoAmount");
 
+	// ExtraFire weapons
+	Debug::Log("Reading ExtraFire for %s\n", pSection);
+	this->ExtraFire_Primary.Read(exINI, pSection, "ExtraFire.Primary");
+	this->ExtraFire_Secondary.Read(exINI, pSection, "ExtraFire.Secondary");
+	this->ExtraFire_ElitePrimary.Read(exINI, pSection, "ExtraFire.ElitePrimary");
+	this->ExtraFire_EliteSecondary.Read(exINI, pSection, "ExtraFire.EliteSecondary");
+	
+	Debug::Log("ExtraFire loaded for %s: Primary=%d, Secondary=%d, ElitePrimary=%d, EliteSecondary=%d\n", 
+		pSection, this->ExtraFire_Primary.size(), this->ExtraFire_Secondary.size(), 
+		this->ExtraFire_ElitePrimary.size(), this->ExtraFire_EliteSecondary.size());
+
 	// Ares 2.0
 	this->Passengers_BySize.Read(exINI, pSection, "Passengers.BySize");
 
@@ -1115,6 +1130,12 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->DeployedPrimaryFireFLH.Read(exArtINI, pArtSection, "DeployedPrimaryFireFLH");
 	this->DeployedSecondaryFireFLH.Read(exArtINI, pArtSection, "DeployedSecondaryFireFLH");
 	this->AlternateFLH_OnTurret.Read(exArtINI, pArtSection, "AlternateFLH.OnTurret");
+	
+	// ExtraFire FLH coordinates
+	this->ExtraFire_PrimaryFLH.Read(exArtINI, pArtSection, "ExtraFire.PrimaryFLH");
+	this->ExtraFire_SecondaryFLH.Read(exArtINI, pArtSection, "ExtraFire.SecondaryFLH");
+	this->ExtraFire_ElitePrimaryFLH.Read(exArtINI, pArtSection, "ExtraFire.ElitePrimaryFLH");
+	this->ExtraFire_EliteSecondaryFLH.Read(exArtINI, pArtSection, "ExtraFire.EliteSecondaryFLH");
 
 	for (size_t i = 0; ; i++)
 	{
@@ -1217,6 +1238,104 @@ void TechnoTypeExt::ExtData::LoadFromINIByWhatAmI(INI_EX& exArtINI, const char* 
 	default:
 		break;
 	}
+}
+
+void TechnoTypeExt::ExtData::FireExtraWeapons(TechnoClass* pThis, AbstractClass* pTarget, int weaponIndex) const
+{
+	if (!pThis || !pTarget || ExtraFireInProgress)
+		return;
+
+	// Debug output
+	Debug::Log("FireExtraWeapons called for %s, weapon index %d\n", 
+		pThis->GetTechnoType()->ID, weaponIndex);
+
+	// Set guard to prevent recursion
+	ExtraFireInProgress = true;
+
+	const bool isElite = pThis->Veterancy.IsElite();
+	std::vector<WeaponTypeClass*> extraWeapons;
+
+	// Determine which ExtraFire weapons to use based on weapon index and elite status
+	if (weaponIndex == 0) // Primary weapon
+	{
+		Debug::Log("Checking Primary weapon, Elite=%d, Primary count=%d, ElitePrimary count=%d\n", 
+			isElite, this->ExtraFire_Primary.size(), this->ExtraFire_ElitePrimary.size());
+		if (isElite && !this->ExtraFire_ElitePrimary.empty())
+			extraWeapons = this->ExtraFire_ElitePrimary;
+		else if (!this->ExtraFire_Primary.empty())
+			extraWeapons = this->ExtraFire_Primary;
+	}
+	else if (weaponIndex == 1) // Secondary weapon  
+	{
+		Debug::Log("Checking Secondary weapon, Elite=%d, Secondary count=%d, EliteSecondary count=%d\n", 
+			isElite, this->ExtraFire_Secondary.size(), this->ExtraFire_EliteSecondary.size());
+		if (isElite && !this->ExtraFire_EliteSecondary.empty())
+			extraWeapons = this->ExtraFire_EliteSecondary;
+		else if (!this->ExtraFire_Secondary.empty())
+			extraWeapons = this->ExtraFire_Secondary;
+	}
+
+	Debug::Log("Selected %d ExtraFire weapons to fire\n", extraWeapons.size());
+
+	// Fire each ExtraFire weapon
+	auto pTechnoExt = TechnoExt::ExtMap.Find(pThis);
+	for (auto pWeapon : extraWeapons)
+	{
+		if (pWeapon)
+		{
+			// Check ROF timer for this specific ExtraFire weapon
+			auto& timer = pTechnoExt->ExtraFireTimers[pWeapon];
+			if (!timer.Expired())
+			{
+				Debug::Log("ExtraFire weapon %s still on cooldown\n", pWeapon->ID);
+				continue; // Skip this weapon if ROF hasn't elapsed
+			}
+			
+			Debug::Log("Firing ExtraFire weapon: %s\n", pWeapon->ID);
+			
+			// Start ROF timer for this weapon
+			timer.Start(pWeapon->ROF);
+			
+			// Temporarily store the original weapon and FLH
+			auto originalWeapon = pThis->GetWeapon(weaponIndex);
+			WeaponTypeClass* originalWeaponType = originalWeapon ? originalWeapon->WeaponType : nullptr;
+			CoordStruct originalFLH = originalWeapon ? originalWeapon->FLH : CoordStruct{0,0,0};
+			
+			// Get the appropriate ExtraFire FLH
+			CoordStruct extraFireFLH = {0,0,0};
+			if (weaponIndex == 0) // Primary weapon
+			{
+				if (isElite && this->ExtraFire_ElitePrimaryFLH.isset())
+					extraFireFLH = this->ExtraFire_ElitePrimaryFLH.Get();
+				else
+					extraFireFLH = this->ExtraFire_PrimaryFLH.Get();
+			}
+			else if (weaponIndex == 1) // Secondary weapon
+			{
+				if (isElite && this->ExtraFire_EliteSecondaryFLH.isset())
+					extraFireFLH = this->ExtraFire_EliteSecondaryFLH.Get();
+				else
+					extraFireFLH = this->ExtraFire_SecondaryFLH.Get();
+			}
+			
+			// Temporarily replace the weapon and FLH with the ExtraFire weapon
+			if (originalWeapon)
+			{
+				originalWeapon->WeaponType = pWeapon;
+				originalWeapon->FLH = extraFireFLH;
+				
+				// Use the game's built-in firing mechanism
+				pThis->Fire(pTarget, weaponIndex);
+				
+				// Restore the original weapon and FLH
+				originalWeapon->WeaponType = originalWeaponType;
+				originalWeapon->FLH = originalFLH;
+			}
+		}
+	}
+	
+	// Clear guard
+	ExtraFireInProgress = false;
 }
 
 template <typename T>
@@ -1346,6 +1465,17 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->NoSecondaryWeaponFallback_AllowAA)
 		.Process(this->NoAmmoWeapon)
 		.Process(this->NoAmmoAmount)
+		
+		// ExtraFire serialization
+		.Process(this->ExtraFire_Primary)
+		.Process(this->ExtraFire_Secondary)
+		.Process(this->ExtraFire_ElitePrimary)
+		.Process(this->ExtraFire_EliteSecondary)
+		.Process(this->ExtraFire_PrimaryFLH)
+		.Process(this->ExtraFire_SecondaryFLH)
+		.Process(this->ExtraFire_ElitePrimaryFLH)
+		.Process(this->ExtraFire_EliteSecondaryFLH)
+		
 		.Process(this->JumpjetRotateOnCrash)
 		.Process(this->ShadowSizeCharacteristicHeight)
 		.Process(this->DeployingAnim_AllowAnyDirection)
