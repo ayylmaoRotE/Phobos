@@ -142,6 +142,11 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->TransactMoney_Display_AtFirer.Read(exINI, pSection, "TransactMoney.Display.AtFirer");
 	this->TransactMoney_Display_Offset.Read(exINI, pSection, "TransactMoney.Display.Offset");
 	
+	this->StealMoney_Amount.Read(exINI, pSection, "StealMoney.Amount");
+	this->StealMoney_Display.Read(exINI, pSection, "StealMoney.Display");
+	this->StealMoney_Display_Houses.Read(exINI, pSection, "StealMoney.Display.Houses");
+	this->StealMoney_Display_Offset.Read(exINI, pSection, "StealMoney.Display.Offset");
+	
 	this->Transact.Read(exINI, pSection, "Transact");
 	this->Transact_SpreadAmongTargets.Read(exINI, pSection, "Transact.SpreadAmongTargets");
 	this->Transact_Experience_Source_Flat.Read(exINI, pSection, "Transact.Experience.Source.Flat");

@@ -270,6 +270,9 @@ void WarheadTypeExt::ExtData::DetonateOnOneUnit(HouseClass* pHouse, TechnoClass*
 	if (this->AttachEffects.AttachTypes.size() > 0 || this->AttachEffects.RemoveTypes.size() > 0 || this->AttachEffects.RemoveGroups.size() > 0)
 		this->ApplyAttachEffects(pTarget, pHouse, pOwner);
 
+	if (this->StealMoney_Amount != 0 && pOwner)
+		this->ApplyStealMoney(pOwner, pTarget);
+
 	if (this->BuildingSell || this->BuildingUndeploy)
 		this->ApplyBuildingUndeploy(pTarget);
 
@@ -707,4 +710,32 @@ double WarheadTypeExt::ExtData::GetCritChance(TechnoClass* pFirer) const
 	}
 
 	return critChance + extraChance;
+}
+
+void WarheadTypeExt::ExtData::ApplyStealMoney(TechnoClass* pOwner, TechnoClass* pTarget) const
+{
+	const int stealAmount = this->StealMoney_Amount;
+
+	if (stealAmount != 0 && pOwner && pTarget)
+	{
+		auto pOwnerHouse = pOwner->GetOwningHouse();
+		auto pTargetHouse = pTarget->GetOwningHouse();
+
+		if (pOwnerHouse && pTargetHouse && 
+			!pOwnerHouse->IsNeutral() && !pTargetHouse->IsNeutral() &&
+			pOwnerHouse != pTargetHouse)
+		{
+			if (pOwnerHouse->CanTransactMoney(stealAmount) && pTargetHouse->CanTransactMoney(-stealAmount))
+			{
+				pOwnerHouse->TransactMoney(stealAmount);
+				pTargetHouse->TransactMoney(-stealAmount);
+
+				if (this->StealMoney_Display)
+				{
+					FlyingStrings::AddMoneyString(stealAmount, pOwnerHouse, this->StealMoney_Display_Houses, pOwner->GetCoords(), this->StealMoney_Display_Offset);
+					FlyingStrings::AddMoneyString(-stealAmount, pTargetHouse, this->StealMoney_Display_Houses, pTarget->GetCoords(), this->StealMoney_Display_Offset);
+				}
+			}
+		}
+	}
 }

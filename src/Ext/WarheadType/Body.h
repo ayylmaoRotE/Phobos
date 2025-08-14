@@ -31,6 +31,11 @@ public:
 		Valueable<AffectedHouse> TransactMoney_Display_Houses;
 		Valueable<bool> TransactMoney_Display_AtFirer;
 		Valueable<Point2D> TransactMoney_Display_Offset;
+
+		Valueable<int> StealMoney_Amount;
+		Valueable<bool> StealMoney_Display;
+		Valueable<AffectedHouse> StealMoney_Display_Houses;
+		Valueable<Point2D> StealMoney_Display_Offset;
 		
 		Valueable<bool> Transact;
 		Valueable<bool> Transact_SpreadAmongTargets;
@@ -237,6 +242,10 @@ public:
 			, TransactMoney_Display_Houses { AffectedHouse::All }
 			, TransactMoney_Display_AtFirer { false }
 			, TransactMoney_Display_Offset { { 0, 0 } }
+			, StealMoney_Amount { 0 }
+			, StealMoney_Display { false }
+			, StealMoney_Display_Houses { AffectedHouse::All }
+			, StealMoney_Display_Offset { { 0, 0 } }
 			, Transact { false }
 			, Transact_SpreadAmongTargets { false }
 			, Transact_Experience_Source_Flat { 0 }
@@ -458,6 +467,7 @@ public:
 		void ApplyCrit(HouseClass* pHouse, TechnoClass* pTarget, TechnoClass* Owner);
 		void ApplyShieldModifiers(TechnoClass* pTarget);
 		void ApplyAttachEffects(TechnoClass* pTarget, HouseClass* pInvokerHouse, TechnoClass* pInvoker);
+		void ApplyStealMoney(TechnoClass* pOwner, TechnoClass* pTarget) const;
 		void ApplyBuildingUndeploy(TechnoClass* pTarget);
 		double GetCritChance(TechnoClass* pFirer) const;
 		
