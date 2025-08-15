@@ -2,6 +2,7 @@
 
 #include <TacticalClass.h>
 #include <RadarEventClass.h>
+#include <unordered_map>
 
 #include <Ext/WarheadType/Body.h>
 #include <Ext/WeaponType/Body.h>
@@ -149,6 +150,53 @@ DEFINE_HOOK(0x701900, TechnoClass_ReceiveDamage_Shield, 0x6)
 			pThis->Health = 1;
 			pThis->EstimatedHealth = 1;
 			ReceiveDamageTemp::SkipLowDamageCheck = true;
+		}
+	}
+
+	// Hit Animation based on armor type - only for valid units that actually took damage
+	if (damage > 0 && !args->IgnoreDefenses && pThis && pThis->GetTechnoType() && pThis->IsAlive)
+	{
+		// Ensure this is a valid target unit, not ground/terrain impact
+		if (pThis->Health > 0 && pThis->InLimbo == false)
+		{
+			const auto armor = pThis->GetTechnoType()->Armor;
+			AnimTypeClass* pAnimType = nullptr;
+			
+			// Read armor string directly from INI (no caching to avoid save/load issues)
+			std::string customArmorName;
+			char armorBuffer[128] = "";
+			const char* unitID = pThis->GetTechnoType()->ID;
+			
+			if (CCINIClass::INI_Rules->ReadString(unitID, "Armor", "", armorBuffer, sizeof(armorBuffer)) > 0)
+			{
+				customArmorName = armorBuffer;
+				std::transform(customArmorName.begin(), customArmorName.end(), customArmorName.begin(), 
+				[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			}
+			
+			if (!customArmorName.empty())
+			{
+				// Try specific custom armor animation
+				pAnimType = pWHExt->GetArmorHitAnim(customArmorName.c_str());
+				
+				// If not found, try with fallback system
+				if (!pAnimType)
+				{
+					pAnimType = pWHExt->GetArmorHitAnimWithFallback(customArmorName.c_str());
+				}
+			}
+			
+			// Fall back to standard armor type if no custom armor or animation found
+			if (!pAnimType)
+			{
+				pAnimType = pWHExt->GetArmorHitAnim(armor);
+			}
+			
+			if (pAnimType)
+			{
+				const auto coords = pThis->GetCenterCoords();
+				GameCreate<AnimClass>(pAnimType, coords);
+			}
 		}
 	}
 

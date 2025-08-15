@@ -36,6 +36,9 @@ public:
 		Valueable<int> RadarJamRadius;
 		Nullable<int> InhibitorRange;
 		Nullable<int> DesignatorRange;
+		
+		// Custom armor name for HitAnim system
+		std::string CustomArmorName;
 		Valueable<float> FactoryPlant_Multiplier;
 		Valueable<Leptons> MindControlRangeLimit;
 		Valueable<AffectedHouse> MindControlLink_VisibleToHouse;
@@ -442,6 +445,7 @@ public:
 			, RadarJamRadius { 0 }
 			, InhibitorRange {}
 			, DesignatorRange { }
+			, CustomArmorName {}
 			, FactoryPlant_Multiplier { 1.0 }
 			, MindControlRangeLimit {}
 			, MindControlLink_VisibleToHouse{ AffectedHouse::All }

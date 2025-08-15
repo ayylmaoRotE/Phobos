@@ -229,6 +229,9 @@ public:
 
 		Valueable<bool> CanKill;
 
+		std::map<std::string, AnimTypeClass*> ArmorHitAnim;
+		static std::map<std::string, std::string> ArmorTypeInheritance; // maps custom armor -> base armor
+
 	private:
 		Valueable<double> Shield_Respawn_Rate_InMinutes;
 		Valueable<double> Shield_SelfHealing_Rate_InMinutes;
@@ -444,6 +447,12 @@ public:
 		bool CanAffectInvulnerable(TechnoClass* pTarget) const;
 		bool EligibleForFullMapDetonation(TechnoClass* pTechno, HouseClass* pOwner) const;
 		bool IsHealthInThreshold(TechnoClass* pTarget) const;
+		AnimTypeClass* GetArmorHitAnim(Armor armor) const;
+		AnimTypeClass* GetArmorHitAnim(const char* armorName) const;
+		AnimTypeClass* GetArmorHitAnimWithFallback(const char* armorName) const;
+		
+		static void LoadArmorTypeInheritance(CCINIClass* pINI);
+	static void ReloadAllHitAnimData(CCINIClass* pINI);
 
 		virtual ~ExtData() = default;
 		virtual void LoadFromINIFile(CCINIClass* pINI) override;

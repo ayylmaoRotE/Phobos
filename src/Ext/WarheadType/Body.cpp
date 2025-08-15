@@ -1,5 +1,8 @@
 #include "Body.h"
 
+#include <algorithm>
+#include <cctype>
+#include <array>
 #include <BulletClass.h>
 #include <HouseClass.h>
 
@@ -8,6 +11,7 @@
 #include <Utilities/EnumFunctions.h>
 
 WarheadTypeExt::ExtContainer WarheadTypeExt::ExtMap;
+std::map<std::string, std::string> WarheadTypeExt::ExtData::ArmorTypeInheritance;
 
 bool WarheadTypeExt::ExtData::CanTargetHouse(HouseClass* pHouse, TechnoClass* pTarget) const
 {
@@ -122,6 +126,132 @@ DamageAreaResult WarheadTypeExt::ExtData::DamageAreaWithTarget(const CoordStruct
 	auto const result = MapClass::DamageArea(coords, damage, pSource, pWH, true, pSourceHouse);
 	this->DamageAreaTarget = nullptr;
 	return result;
+}
+
+AnimTypeClass* WarheadTypeExt::ExtData::GetArmorHitAnim(Armor armor) const
+{
+	const char* armorNames[] = {
+		"none", "flak", "plate", "light", "medium", "heavy", "wood", "steel", "concrete", "special_1", "special_2"
+	};
+	
+	if (static_cast<int>(armor) >= 0 && static_cast<int>(armor) < 11)
+		return GetArmorHitAnim(armorNames[static_cast<int>(armor)]);
+	
+	return nullptr;
+}
+
+AnimTypeClass* WarheadTypeExt::ExtData::GetArmorHitAnim(const char* armorName) const
+{
+	auto it = this->ArmorHitAnim.find(armorName);
+	return (it != this->ArmorHitAnim.end()) ? it->second : nullptr;
+}
+
+AnimTypeClass* WarheadTypeExt::ExtData::GetArmorHitAnimWithFallback(const char* armorName) const
+{
+	// First try to find animation for the specific armor type
+	AnimTypeClass* pAnim = GetArmorHitAnim(armorName);
+	if (pAnim)
+		return pAnim;
+	
+	// If not found, try to follow inheritance chain
+	auto inheritanceIt = ArmorTypeInheritance.find(armorName);
+	if (inheritanceIt != ArmorTypeInheritance.end())
+	{
+		const std::string& baseArmor = inheritanceIt->second;
+		if (!baseArmor.empty() && baseArmor != armorName) // Prevent infinite recursion
+		{
+			return GetArmorHitAnimWithFallback(baseArmor.c_str());
+		}
+	}
+	
+	return nullptr;
+}
+
+void WarheadTypeExt::ExtData::LoadArmorTypeInheritance(CCINIClass* pINI)
+{
+	ArmorTypeInheritance.clear();
+	
+	// Read [ArmorTypes] section
+	const char* pSection = "ArmorTypes";
+	
+	if (pINI->GetSection(pSection))
+	{
+		int keyCount = pINI->GetKeyCount(pSection);
+		
+		for (int i = 0; i < keyCount; ++i)
+		{
+			const char* pKey = pINI->GetKeyName(pSection, i);
+			if (pKey)
+			{
+				char buffer[256];
+				if (pINI->ReadString(pSection, pKey, "", buffer, sizeof(buffer)) > 0)
+				{
+					std::string customArmor = pKey;
+					std::string baseArmor = buffer;
+					
+					// Convert to lowercase for consistent matching
+					std::transform(customArmor.begin(), customArmor.end(), customArmor.begin(), 
+						[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+					std::transform(baseArmor.begin(), baseArmor.end(), baseArmor.begin(), 
+						[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+					
+					ArmorTypeInheritance[customArmor] = baseArmor;
+				}
+			}
+		}
+	}
+}
+
+void WarheadTypeExt::ExtData::ReloadAllHitAnimData(CCINIClass* pINI)
+{
+	Debug::Log("DEBUG: ReloadAllHitAnimData called\n");
+	int totalLoaded = 0;
+	
+	// Define comprehensive list of armor types to check
+	const char* armorTypeNames[] = {
+		// Standard armor types
+		"none", "flak", "plate", "light", "medium", "heavy", "wood", "steel", "concrete", "special_1", "special_2",
+		// Common Ares custom armor types from your example
+		"banearmor", "t1armor", "t2armor", "t3armor", "bike", "random2", "random", "fuck1", "fuck2",
+		"allgroundlight", "allgroundheavy", "allairlight", "allairmedium", "allairheavy", 
+		"ameairlight", "ameairmedium", "ameairheavy", "flyingharv", "t1airmig", "aznairmedium", "aznairheavy",
+		"hackernone", "sbanearmor", "eradiarmor", "wfarmor", "powerarmor", "consflak", "immune", "immune2",
+		"gbrutearm", "dummyarmor", "dronetnkarmor", "ionarmor", "techarmor", "beaconarmor", "diearm",
+		"cnst", "bb_killself", "noneair", "t1air", "t2air", "t3air", "t1cyplate", "zeparmor",
+		"dronearmor", "radarz", "gtnkarmor", "minigarmor", "ggunarmor", "miliarmor",
+		"t2none", "t2flak", "t2plate", "t2light", "t2medium", "t2heavy",
+		"t3none", "t3flak", "t3plate", "t3light", "t3medium", "t3heavy",
+		"1x1def", "wallarm", "knone", "glaradr", "initarm", "slavarm", "immuhax", "dredarmor",
+		"barlarm", "yuri2arm", "brutarm", "shkarmor", "heroarmor", "sweeparm", "shkarmor2",
+		"fleurarmor", "borisarmor", "ahsanarmor", "tanyarmor", "yuriarmor", "huoarmor", "lotusarm",
+		"mindarm", "ttnkarmor", "lsrarmor", "pguyarmor", "glarokarm", "insuarm", "sitearm", "bcararm"
+	};
+	
+	// Reload HitAnim data for all warheads
+	for (auto& warheadType : WarheadTypeClass::Array)
+	{
+		if (auto pWHExt = WarheadTypeExt::ExtMap.TryFind(warheadType))
+		{
+			const char* pSection = warheadType->ID;
+			pWHExt->ArmorHitAnim.clear();
+			
+			char tempBuffer[64];
+			for (const char* armorName : armorTypeNames)
+			{
+				sprintf_s(tempBuffer, "HitAnim.%s", armorName);
+				if (pINI->ReadString(pSection, tempBuffer, "", tempBuffer, sizeof(tempBuffer)) > 0)
+				{
+					if (auto pAnimType = AnimTypeClass::FindOrAllocate(tempBuffer))
+					{
+						pWHExt->ArmorHitAnim[armorName] = pAnimType;
+						Debug::Log("DEBUG: Loaded %s HitAnim.%s=%s\n", pSection, armorName, tempBuffer);
+						totalLoaded++;
+					}
+				}
+			}
+		}
+	}
+	Debug::Log("DEBUG: ReloadAllHitAnimData finished, loaded %d animations\n", totalLoaded);
 }
 
 // =============================
@@ -411,6 +541,42 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 		else
 			this->SpawnsCrate_Weights.push_back(weight);
 	}
+
+	// ArmorHitAnim reading - build comprehensive list of known armor types
+	this->ArmorHitAnim.clear();
+	
+	// Define comprehensive list of armor types to check
+	const char* armorTypeNames[] = {
+		// Standard armor types
+		"none", "flak", "plate", "light", "medium", "heavy", "wood", "steel", "concrete", "special_1", "special_2",
+		// Common Ares custom armor types from your example
+		"banearmor", "t1armor", "t2armor", "t3armor", "bike", "random2", "random", "fuck1", "fuck2",
+		"allgroundlight", "allgroundheavy", "allairlight", "allairmedium", "allairheavy", 
+		"ameairlight", "ameairmedium", "ameairheavy", "flyingharv", "t1airmig", "aznairmedium", "aznairheavy",
+		"hackernone", "sbanearmor", "eradiarmor", "wfarmor", "powerarmor", "consflak", "immune", "immune2",
+		"gbrutearm", "dummyarmor", "dronetnkarmor", "ionarmor", "techarmor", "beaconarmor", "diearm",
+		"cnst", "bb_killself", "noneair", "t1air", "t2air", "t3air", "t1cyplate", "zeparmor",
+		"dronearmor", "radarz", "gtnkarmor", "minigarmor", "ggunarmor", "miliarmor",
+		"t2none", "t2flak", "t2plate", "t2light", "t2medium", "t2heavy",
+		"t3none", "t3flak", "t3plate", "t3light", "t3medium", "t3heavy",
+		"1x1def", "wallarm", "knone", "glaradr", "initarm", "slavarm", "immuhax", "dredarmor",
+		"barlarm", "yuri2arm", "brutarm", "shkarmor", "heroarmor", "sweeparm", "shkarmor2",
+		"fleurarmor", "borisarmor", "ahsanarmor", "tanyarmor", "yuriarmor", "huoarmor", "lotusarm",
+		"mindarm", "ttnkarmor", "lsrarmor", "pguyarmor", "glarokarm", "insuarm", "sitearm", "bcararm"
+	};
+	
+	for (const char* armorName : armorTypeNames)
+	{
+		Nullable<AnimTypeClass*> animTemp;
+		sprintf_s(tempBuffer, "HitAnim.%s", armorName);
+		animTemp.Read(exINI, pSection, tempBuffer);
+		if (animTemp.isset())
+		{
+			this->ArmorHitAnim[armorName] = animTemp.Get();
+			Debug::Log("DEBUG HitAnim: Warhead %s loaded HitAnim.%s=%s\n", 
+				pSection, armorName, animTemp.Get() ? animTemp.Get()->ID : "null");
+		}
+	}
 }
 
 template <typename T>
@@ -610,14 +776,30 @@ void WarheadTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->Reflected)
 		.Process(this->DamageAreaTarget)
 
-		.Process(this->CanKill)
-		;
+		.Process(this->CanKill);
+
+	// Note: ArmorHitAnim map is not serialized due to complexity.
+	// It will be rebuilt from INI on load, which is acceptable since
+	// the data is static and doesn't change during gameplay.
+}
+
+// Flag to ensure HitAnim data is only reloaded once per load operation
+namespace {
+	bool hasReloadedHitAnim = false;
 }
 
 void WarheadTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
 {
 	Extension<WarheadTypeClass>::LoadFromStream(Stm);
 	this->Serialize(Stm);
+	
+	// Reload HitAnim data after each warhead is loaded from save
+	if (!hasReloadedHitAnim)
+	{
+		Debug::Log("DEBUG: LoadFromStream reloading HitAnim data\n");
+		ExtData::ReloadAllHitAnimData(CCINIClass::INI_Rules);
+		hasReloadedHitAnim = true;
+	}
 }
 
 void WarheadTypeExt::ExtData::SaveToStream(PhobosStreamWriter& Stm)
@@ -654,11 +836,42 @@ bool WarheadTypeExt::ExtData::CanDealDamage(TechnoClass* pTechno, int damageIn, 
 
 bool WarheadTypeExt::LoadGlobals(PhobosStreamReader& Stm)
 {
+	Debug::Log("DEBUG: LoadGlobals called\n");
+	
+	// Load armor type inheritance
+	ExtData::ArmorTypeInheritance.clear();
+	size_t count = 0;
+	Stm.Process(count);
+	for (size_t i = 0; i < count; ++i)
+	{
+		std::string customArmor, baseArmor;
+		Stm.Process(customArmor);
+		Stm.Process(baseArmor);
+		if (!customArmor.empty())
+		{
+			ExtData::ArmorTypeInheritance[customArmor] = baseArmor;
+		}
+	}
+	
+	// Reset the reload flag so HitAnim data will be reloaded
+	hasReloadedHitAnim = false;
+	
 	return Stm.Success();
 }
 
 bool WarheadTypeExt::SaveGlobals(PhobosStreamWriter& Stm)
 {
+	// Save armor type inheritance
+	size_t count = ExtData::ArmorTypeInheritance.size();
+	Stm.Process(count);
+	for (const auto& pair : ExtData::ArmorTypeInheritance)
+	{
+		std::string customArmor = pair.first;
+		std::string baseArmor = pair.second;
+		Stm.Process(customArmor);
+		Stm.Process(baseArmor);
+	}
+	
 	return Stm.Success();
 }
 

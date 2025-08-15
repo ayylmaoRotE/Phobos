@@ -603,6 +603,20 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->MindControlRangeLimit.Read(exINI, pSection, "MindControlRangeLimit");
 	this->MindControlLink_VisibleToHouse.Read(exINI, pSection, "MindControlLink.VisibleToHouse");
 	this->FactoryPlant_Multiplier.Read(exINI, pSection, "FactoryPlant.Multiplier");
+	
+	// Read custom armor name for HitAnim system
+	char armorBuffer[128] = "";
+	if (pINI->ReadString(pSection, "Armor", "", armorBuffer, sizeof(armorBuffer)) > 0)
+	{
+		std::string armorStr = armorBuffer;
+		std::transform(armorStr.begin(), armorStr.end(), armorStr.begin(), 
+			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		this->CustomArmorName = armorStr;
+	}
+	else
+	{
+		this->CustomArmorName.clear();
+	}
 
 	this->Spawner_LimitRange.Read(exINI, pSection, "Spawner.LimitRange");
 	this->Spawner_ExtraLimitRange.Read(exINI, pSection, "Spawner.ExtraLimitRange");
@@ -1329,7 +1343,7 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->MindControlRangeLimit)
 		.Process(this->MindControlLink_VisibleToHouse)
 		.Process(this->FactoryPlant_Multiplier)
-
+		.Process(this->CustomArmorName)
 		.Process(this->InterceptorType)
 
 		.Process(this->GroupAs)

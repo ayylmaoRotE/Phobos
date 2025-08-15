@@ -5,6 +5,7 @@
 #include <GameOptionsClass.h>
 
 #include <Ext/TechnoType/Body.h>
+#include <Ext/WarheadType/Body.h>
 #include <New/Type/RadTypeClass.h>
 #include <New/Type/ShieldTypeClass.h>
 #include <New/Type/LaserTrailTypeClass.h>
@@ -361,7 +362,13 @@ void RulesExt::ExtData::LoadAfterTypeData(RulesClass* pThis, CCINIClass* pINI)
 // this runs between the before and after type data loading methods for rules ini
 void RulesExt::ExtData::InitializeAfterTypeData(RulesClass* const pThis)
 {
-
+	Debug::Log("DEBUG: InitializeAfterTypeData called\n");
+	
+	// Load armor type inheritance from rules
+	WarheadTypeExt::ExtData::LoadArmorTypeInheritance(CCINIClass::INI_Rules);
+	
+	// Reload HitAnim data for all warheads now that all INI files are processed
+	WarheadTypeExt::ExtData::ReloadAllHitAnimData(CCINIClass::INI_Rules);
 }
 
 void RulesExt::ExtData::InitializeAfterAllLoaded()
