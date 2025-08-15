@@ -980,15 +980,10 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->NoAmmoAmount.Read(exINI, pSection, "NoAmmoAmount");
 
 	// ExtraFire weapons
-	Debug::Log("Reading ExtraFire for %s\n", pSection);
 	this->ExtraFire_Primary.Read(exINI, pSection, "ExtraFire.Primary");
 	this->ExtraFire_Secondary.Read(exINI, pSection, "ExtraFire.Secondary");
 	this->ExtraFire_ElitePrimary.Read(exINI, pSection, "ExtraFire.ElitePrimary");
 	this->ExtraFire_EliteSecondary.Read(exINI, pSection, "ExtraFire.EliteSecondary");
-	
-	Debug::Log("ExtraFire loaded for %s: Primary=%d, Secondary=%d, ElitePrimary=%d, EliteSecondary=%d\n", 
-		pSection, this->ExtraFire_Primary.size(), this->ExtraFire_Secondary.size(), 
-		this->ExtraFire_ElitePrimary.size(), this->ExtraFire_EliteSecondary.size());
 
 	// Ares 2.0
 	this->Passengers_BySize.Read(exINI, pSection, "Passengers.BySize");
@@ -1245,9 +1240,6 @@ void TechnoTypeExt::ExtData::FireExtraWeapons(TechnoClass* pThis, AbstractClass*
 	if (!pThis || !pTarget || ExtraFireInProgress)
 		return;
 
-	// Debug output
-	Debug::Log("FireExtraWeapons called for %s, weapon index %d\n", 
-		pThis->GetTechnoType()->ID, weaponIndex);
 
 	// Set guard to prevent recursion
 	ExtraFireInProgress = true;
@@ -1258,8 +1250,6 @@ void TechnoTypeExt::ExtData::FireExtraWeapons(TechnoClass* pThis, AbstractClass*
 	// Determine which ExtraFire weapons to use based on weapon index and elite status
 	if (weaponIndex == 0) // Primary weapon
 	{
-		Debug::Log("Checking Primary weapon, Elite=%d, Primary count=%d, ElitePrimary count=%d\n", 
-			isElite, this->ExtraFire_Primary.size(), this->ExtraFire_ElitePrimary.size());
 		if (isElite && !this->ExtraFire_ElitePrimary.empty())
 			extraWeapons = this->ExtraFire_ElitePrimary;
 		else if (!this->ExtraFire_Primary.empty())
@@ -1267,15 +1257,11 @@ void TechnoTypeExt::ExtData::FireExtraWeapons(TechnoClass* pThis, AbstractClass*
 	}
 	else if (weaponIndex == 1) // Secondary weapon  
 	{
-		Debug::Log("Checking Secondary weapon, Elite=%d, Secondary count=%d, EliteSecondary count=%d\n", 
-			isElite, this->ExtraFire_Secondary.size(), this->ExtraFire_EliteSecondary.size());
 		if (isElite && !this->ExtraFire_EliteSecondary.empty())
 			extraWeapons = this->ExtraFire_EliteSecondary;
 		else if (!this->ExtraFire_Secondary.empty())
 			extraWeapons = this->ExtraFire_Secondary;
 	}
-
-	Debug::Log("Selected %d ExtraFire weapons to fire\n", extraWeapons.size());
 
 	// Fire each ExtraFire weapon
 	auto pTechnoExt = TechnoExt::ExtMap.Find(pThis);
@@ -1286,12 +1272,7 @@ void TechnoTypeExt::ExtData::FireExtraWeapons(TechnoClass* pThis, AbstractClass*
 			// Check ROF timer for this specific ExtraFire weapon
 			auto& timer = pTechnoExt->ExtraFireTimers[pWeapon];
 			if (!timer.Expired())
-			{
-				Debug::Log("ExtraFire weapon %s still on cooldown\n", pWeapon->ID);
 				continue; // Skip this weapon if ROF hasn't elapsed
-			}
-			
-			Debug::Log("Firing ExtraFire weapon: %s\n", pWeapon->ID);
 			
 			// Start ROF timer for this weapon
 			timer.Start(pWeapon->ROF);

@@ -648,9 +648,6 @@ DEFINE_HOOK(0x6FDD50, TechnoClass_FireAt_ExtraFire, 0x6)
 	GET_STACK(AbstractClass*, pTarget, 0x4);
 	GET_STACK(int, weaponIndex, 0x8);
 
-	Debug::Log("ExtraFire hook called for %s\n", pThis->GetTechnoType()->ID);
-
-	// Fire ExtraFire weapons
 	if (auto pTypeExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType()))
 	{
 		pTypeExt->FireExtraWeapons(pThis, pTarget, weaponIndex);
