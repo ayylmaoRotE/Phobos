@@ -61,6 +61,8 @@ public:
 		struct SWExt
 		{
 			int ShotCount;
+			int LastBattlePointsApplyFrame { -1 };
+			int LastCommanderPointsApplyFrame { -1 };
 		};
 		std::vector<SWExt> SuperExts;
 

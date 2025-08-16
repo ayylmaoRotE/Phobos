@@ -579,22 +579,32 @@ void StraightTrajectory::BulletDetonateVelocityCheck(BulletClass* pBullet, House
 		auto largePace = static_cast<size_t>(std::max(cellPace.X, cellPace.Y));
 		const auto stepCoord = !largePace ? CoordStruct::Empty : (theTargetCoords - theSourceCoords) * (1.0 / largePace);
 		auto curCoord = theSourceCoords;
-		auto pCurCell = MapClass::Instance.GetCellAt(sourceCell);
+		auto curCell = sourceCell;
+		auto pCurCell = MapClass::Instance.GetCellAt(curCell);
 		double cellDistance = locationDistance;
 
 		for (size_t i = 0; i < largePace; ++i)
 		{
-			if ((pType->SubjectToGround && (curCoord.Z + 16) < MapClass::Instance.GetCellFloorHeight(curCoord)) // Below ground level? (16 ->error range)
-				|| (pBullet->Type->SubjectToWalls && pCurCell->OverlayTypeIndex != -1 && OverlayTypeClass::Array.GetItem(pCurCell->OverlayTypeIndex)->Wall) // Impact on the wall?
-				|| (checkThrough && this->CheckThroughAndSubjectInCell(pBullet, pCurCell, pOwner))) // Blocked by obstacles?
+			// evaluate checks against current cell
+			if ((pType->SubjectToGround && (curCoord.Z + 16) < MapClass::Instance.GetCellFloorHeight(curCoord))
+				|| (pBullet->Type->SubjectToWalls && pCurCell->OverlayTypeIndex != -1 && OverlayTypeClass::Array.GetItem(pCurCell->OverlayTypeIndex)->Wall)
+				|| (checkThrough && this->CheckThroughAndSubjectInCell(pBullet, pCurCell, pOwner)))
 			{
 				velocityCheck = true;
 				cellDistance = curCoord.DistanceFrom(theSourceCoords);
 				break;
 			}
 
+			// step forward
 			curCoord += stepCoord;
-			pCurCell = MapClass::Instance.GetCellAt(curCoord);
+
+			// only refresh the cell pointer if we actually crossed into a new cell
+			const auto nextCell = CellClass::Coord2Cell(curCoord);
+			if (nextCell.X != curCell.X || nextCell.Y != curCell.Y)
+			{
+				curCell = nextCell;
+				pCurCell = MapClass::Instance.GetCellAt(curCell);
+			}
 		}
 
 		locationDistance = cellDistance;
@@ -823,10 +833,13 @@ void StraightTrajectory::PrepareForDetonateAt(BulletClass* pBullet, HouseClass* 
 			if (nextDistanceCrd * velocityCrd > 0) // Behind the bullet
 				continue;
 
-			const auto cross = distanceCrd.CrossProduct(nextDistanceCrd).MagnitudeSquared();
-			const auto distance = (velocitySq > 1e-10) ? sqrt(cross / velocitySq) : distanceCrd.Magnitude();
+			const auto crossSq = distanceCrd.CrossProduct(nextDistanceCrd).MagnitudeSquared();
+			const double distSq = (velocitySq > 1e-10)
+				? (crossSq / static_cast<double>(velocitySq))
+				: static_cast<double>(distanceCrd.MagnitudeSquared());
 
-			if (technoType != AbstractType::Building && distance > radius) // In the cylinder
+			const auto radiusSq = static_cast<double>(radius) * static_cast<double>(radius);
+			if (technoType != AbstractType::Building && distSq > radiusSq) // In the cylinder
 				continue;
 
 			if (thisSize >= vectSize)

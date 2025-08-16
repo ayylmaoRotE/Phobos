@@ -152,8 +152,15 @@ std::vector<CellClass*> PhobosTrajectoryType::GetCellsInProximityRadius(BulletCl
 {
 	// Seems like the y-axis is reversed, but it's okay.
 	const CoordStruct walkCoord { static_cast<int>(pBullet->Velocity.X), static_cast<int>(pBullet->Velocity.Y), 0 };
-	const auto sideMult = trajectoryProximityRange / walkCoord.Magnitude();
-
+	const auto walkLen = walkCoord.Magnitude();
+	if (walkLen <= 0)
+	{
+		std::vector<CellClass*> out;
+		out.reserve(1);
+		out.push_back(MapClass::Instance.GetCellAt(CellClass::Coord2Cell(pBullet->Location)));
+		return out;
+	}
+	const auto sideMult = trajectoryProximityRange / walkLen;
 	const CoordStruct cor1Coord { static_cast<int>(walkCoord.Y * sideMult), static_cast<int>((-walkCoord.X) * sideMult), 0 };
 	const CoordStruct cor4Coord { static_cast<int>((-walkCoord.Y) * sideMult), static_cast<int>(walkCoord.X * sideMult), 0 };
 	const auto thisCell = CellClass::Coord2Cell(pBullet->Location);

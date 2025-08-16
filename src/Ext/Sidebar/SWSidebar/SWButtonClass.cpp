@@ -39,8 +39,10 @@ bool SWButtonClass::Draw(bool forced)
 
 	const auto pCurrent = HouseClass::CurrentPlayer;
 	const auto pSuper = pCurrent->Supers[this->SuperIndex];
+	if (!pSuper || !pSuper->Type) return false;
 	const auto pType = pSuper->Type;
 	const auto pSWExt = SWTypeExt::ExtMap.Find(pType);
+	if (!pSWExt) return false;
 
 	// support for pcx cameos
 	if (const auto pPCXCameo = pSWExt->SidebarPCX.GetSurface())
@@ -80,6 +82,8 @@ bool SWButtonClass::Draw(bool forced)
 
 	if (pSuper->IsReady)
 	{
+		const auto pCurrentExt = HouseExt::ExtMap.Find(pCurrent);
+
 		// Check money requirements
 		if (!pCurrent->CanTransactMoney(pSWExt->Money_Amount))
 			shouldDarken = true;
@@ -91,17 +95,17 @@ bool SWButtonClass::Draw(bool forced)
 		// Check BattlePoints requirements using CanTransact method
 		if (pSWExt->BattlePoints_Amount != 0)
 		{
-			const auto pCurrentExt = HouseExt::ExtMap.Find(pCurrent);
-			if (!pCurrentExt->CanTransactBattlePoints(pSWExt->BattlePoints_Amount))
-				shouldDarken = true;
+			shouldDarken = shouldDarken
+				|| !pCurrentExt
+				|| !pCurrentExt->CanTransactBattlePoints(pSWExt->BattlePoints_Amount);
 		}
 
 		// Check CommanderPoints requirements using CanTransact method
 		if (pSWExt->CommanderPoints_Amount != 0)
 		{
-			const auto pCurrentExt = HouseExt::ExtMap.Find(pCurrent);
-			if (!pCurrentExt->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount))
-				shouldDarken = true;
+			shouldDarken = shouldDarken
+				|| !pCurrentExt
+				|| !pCurrentExt->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount);
 		}
 	}
 
@@ -217,8 +221,11 @@ bool SWButtonClass::LaunchSuper() const
 {
 	const auto pCurrent = HouseClass::CurrentPlayer;
 	const auto pSuper = pCurrent->Supers[this->SuperIndex];
+	if (!pSuper || !pSuper->Type) return false;
 	const auto pType = pSuper->Type;
 	const auto pSWExt = SWTypeExt::ExtMap.Find(pType);
+	if (!pSWExt) return false;
+	const auto pCurExt = HouseExt::ExtMap.Find(pCurrent);
 	const bool manual = !pSWExt->SW_ManualFire && pSWExt->SW_AutoFire;
 	const bool unstoppable = pType->UseChargeDrain && pSuper->ChargeDrainState == ChargeDrainState::Draining && pSWExt->SW_Unstoppable;
 
@@ -233,12 +240,12 @@ bool SWButtonClass::LaunchSuper() const
 		VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds);
 		pSWExt->PrintMessage(pSWExt->Message_InsufficientFunds, pCurrent);
 	}
-	else if (pSWExt->BattlePoints_Amount != 0 && !HouseExt::ExtMap.Find(pCurrent)->CanTransactBattlePoints(pSWExt->BattlePoints_Amount))
+	else if (pSWExt->BattlePoints_Amount != 0 && (!pCurExt || !pCurExt->CanTransactBattlePoints(pSWExt->BattlePoints_Amount)))
 	{
 		VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds); // Reuse insufficient funds sound for now
 		pSWExt->PrintMessage(pSWExt->Message_InsufficientFunds, pCurrent); // Reuse insufficient funds message for now
 	}
-	else if (pSWExt->CommanderPoints_Amount != 0 && !HouseExt::ExtMap.Find(pCurrent)->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount))
+	else if (pSWExt->CommanderPoints_Amount != 0 && (!pCurExt || !pCurExt->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount)))
 	{
 		VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds); // Reuse insufficient funds sound for now
 		pSWExt->PrintMessage(pSWExt->Message_InsufficientFunds, pCurrent); // Reuse insufficient funds message for now

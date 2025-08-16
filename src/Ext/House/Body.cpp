@@ -1109,8 +1109,16 @@ bool HouseExt::ReachedBuildLimit(const HouseClass* pHouse, const TechnoTypeClass
 
 void HouseExt::ExtData::UpdateBattlePoints(int modifier)
 {
+	const auto pHouse = this->OwnerObject();
+	const int before = this->BattlePoints;
+
 	this->BattlePoints += modifier;
-	this->BattlePoints = this->BattlePoints < 0 ? 0 : this->BattlePoints;
+	if (this->BattlePoints < 0) this->BattlePoints = 0;
+
+	if (pHouse && this->BattlePoints != before)
+	{
+		pHouse->RecheckTechTree = true;  // single deterministic point for unlocks
+	}
 }
 
 bool HouseExt::ExtData::AreBattlePointsEnabled()
@@ -1158,10 +1166,19 @@ int HouseExt::ExtData::CalculateBattlePoints(TechnoClass* pTechno)
 	return points;
 }
 
+
 void HouseExt::ExtData::UpdateCommanderPoints(int modifier)
 {
+	const auto pHouse = this->OwnerObject();
+	const int before = this->CommanderPoints;
+
 	this->CommanderPoints += modifier;
-	this->CommanderPoints = this->CommanderPoints < 0 ? 0 : this->CommanderPoints;
+	if (this->CommanderPoints < 0) this->CommanderPoints = 0;
+
+	if (pHouse && this->CommanderPoints != before)
+	{
+		pHouse->RecheckTechTree = true;
+	}
 }
 
 bool HouseExt::ExtData::AreCommanderPointsEnabled()

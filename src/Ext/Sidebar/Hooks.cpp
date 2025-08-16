@@ -139,38 +139,69 @@ DEFINE_HOOK(0x4E1A84, GadgetClass_DTOR_ClearCurrentOverGadget, 0x6)
 // Vanilla sidebar superweapon cameo darkening - replicate money check for BP/CP/AuxTechnos
 DEFINE_HOOK(0x6A99B7, TabCameoListClass_Draw_SuperDarken, 0x5)
 {
+	// idxSW is the superweapon index whose cameo is being drawn
 	GET(int, idxSW, EDI);
 
 	bool darken = false;
-	
-	if (auto pSW = HouseClass::CurrentPlayer->Supers.GetItem(idxSW))
+
+	// Cheap early guards + hoisted lookups
+	if (auto* const pPlayer = HouseClass::CurrentPlayer)
 	{
-		if (auto pExt = SWTypeExt::ExtMap.Find(pSW->Type))
+		if (auto* const pSW = pPlayer->Supers.GetItem(idxSW))
 		{
-			if (auto pHouseExt = HouseExt::ExtMap.Find(pSW->Owner))
+			if (auto* const pSWType = pSW->Type)
 			{
-				if (pSW->IsReady)
+				if (auto* const pSWExt = SWTypeExt::ExtMap.Find(pSWType))
 				{
-					// Check money requirements (original Ares logic)
-					if (!pSW->Owner->CanTransactMoney(pExt->Money_Amount))
-						darken = true;
-					
-					// Check BattlePoints requirements
-					if (pExt->BattlePoints_Amount != 0 && !pHouseExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
-						darken = true;
-					
-					// Check CommanderPoints requirements  
-					if (pExt->CommanderPoints_Amount != 0 && !pHouseExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
-						darken = true;
-					
-					// Check SW.AuxTechnos and other availability requirements
-					if (!pExt->IsAvailable(pSW->Owner))
-						darken = true;
+
+					// Only apply extra darken rules when the SW is otherwise "ready".
+					// Base engine already shades when not ready.
+					if (pSW->IsReady)
+					{
+
+						// Requirement 1: Money (Ares original)
+						if (!pSW->Owner->CanTransactMoney(pSWExt->Money_Amount))
+						{
+							darken = true;
+						}
+
+						// Requirement 2/3: Battle / Commander Points
+						if (auto* const pOwnerExt = HouseExt::ExtMap.Find(pSW->Owner))
+						{
+							if (!darken && pSWExt->BattlePoints_Amount != 0 &&
+								!pOwnerExt->CanTransactBattlePoints(pSWExt->BattlePoints_Amount))
+							{
+								darken = true;
+							}
+							if (!darken && pSWExt->CommanderPoints_Amount != 0 &&
+								!pOwnerExt->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount))
+							{
+								darken = true;
+							}
+						}
+						else
+						{
+							// Missing house ext? play it safe.
+							darken = true;
+						}
+
+						// Requirement 4: AuxTechnos / other availability gates
+						if (!darken && !pSWExt->IsAvailable(pSW->Owner))
+						{
+							darken = true;
+						}
+					}
+				}
+				else
+				{
+					// No extension found for this type → disable to avoid edge crashes/misfires
+					darken = true;
 				}
 			}
 		}
 	}
 
+	// BL = darken flag (engine uses it to shade the cameo)
 	R->BL(darken);
 	return 0;
 }

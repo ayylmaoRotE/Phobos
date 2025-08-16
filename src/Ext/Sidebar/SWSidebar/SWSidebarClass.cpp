@@ -155,6 +155,8 @@ bool SWSidebarClass::AddButton(int superIdx)
 	return columns.back()->AddButton(superIdx);
 }
 
+// =============================
+// PERF/STABILITY: safe, fast sort (precompute priority once; stable order for ties)
 void SWSidebarClass::SortButtons()
 {
 	auto& columns = this->Columns;
@@ -167,6 +169,7 @@ void SWSidebarClass::SortButtons()
 		return;
 	}
 
+	// 1) collect all buttons
 	std::vector<SWButtonClass*> vec_Buttons;
 	vec_Buttons.reserve(this->GetMaximumButtonCount());
 
@@ -178,23 +181,44 @@ void SWSidebarClass::SortButtons()
 		column->ClearButtons(false);
 	}
 
+	// 2) precompute priority for current player once per button (no lookups in comparator)
 	const unsigned int ownerBits = 1u << HouseClass::CurrentPlayer->Type->ArrayIndex;
 
-	std::stable_sort(vec_Buttons.begin(), vec_Buttons.end(), [ownerBits](SWButtonClass* const a, SWButtonClass* const b)
+	struct BtnPri { SWButtonClass* btn; uint8_t pri; };
+	std::vector<BtnPri> items;
+	items.reserve(vec_Buttons.size());
+
+	for (auto* btn : vec_Buttons)
+	{
+		const int idx = btn->SuperIndex;
+		const auto* swt = SuperWeaponTypeClass::Array.GetItemOrDefault(idx);
+		uint8_t pri = 0;
+		if (const auto* ext = SWTypeExt::ExtMap.TryFind(swt))
 		{
-			const auto pExtA = SWTypeExt::ExtMap.TryFind(SuperWeaponTypeClass::Array.GetItemOrDefault(a->SuperIndex));
-			const auto pExtB = SWTypeExt::ExtMap.TryFind(SuperWeaponTypeClass::Array.GetItemOrDefault(b->SuperIndex));
+			pri = (ext->SuperWeaponSidebar_PriorityHouses & ownerBits) ? 1 : 0;
+		}
+		items.push_back({ btn, pri });
+	}
 
-			if (pExtB && (pExtB->SuperWeaponSidebar_PriorityHouses & ownerBits) && (!pExtA || !(pExtA->SuperWeaponSidebar_PriorityHouses & ownerBits)))
-				return false;
-
-			if ((!pExtB || !(pExtB->SuperWeaponSidebar_PriorityHouses & ownerBits)) && pExtA && (pExtA->SuperWeaponSidebar_PriorityHouses & ownerBits))
-				return true;
-
-			return BuildType::SortsBefore(AbstractType::Special, a->SuperIndex, AbstractType::Special, b->SuperIndex);
+	// 3) stable sort by (priority desc, BuildType tie-breaker)
+	std::stable_sort(items.begin(), items.end(),
+		[](const BtnPri& A, const BtnPri& B)
+{
+	if (A.pri != B.pri) return A.pri > B.pri;
+	return BuildType::SortsBefore(AbstractType::Special, A.btn->SuperIndex,
+								  AbstractType::Special, B.btn->SuperIndex);
 		});
 
-	const auto pTopPCX = SideExt::ExtMap.TryFind(SideClass::Array.Items[ScenarioClass::Instance->PlayerSideIndex])->SuperWeaponSidebar_TopPCX.GetSurface();
+	// 4) write back to vec_Buttons in the new order
+	vec_Buttons.clear();
+	vec_Buttons.reserve(items.size());
+	for (const auto& it : items) vec_Buttons.emplace_back(it.btn);
+
+	// 5) lay out back into columns (original placement logic)
+	const auto pTopPCX =
+		SideExt::ExtMap.TryFind(SideClass::Array.Items[ScenarioClass::Instance->PlayerSideIndex])
+		->SuperWeaponSidebar_TopPCX.GetSurface();
+
 	const int buttonCount = static_cast<int>(vec_Buttons.size());
 	const int cameoWidth = 60, cameoHeight = 48;
 	const int firstColumn = Phobos::UI::SuperWeaponSidebar_Max;
@@ -235,7 +259,7 @@ void SWSidebarClass::SortButtons()
 	}
 
 	for (const auto column : columns)
-		column->SetHeight(column->Buttons.size() * Phobos::UI::SuperWeaponSidebar_CameoHeight);
+		column->SetHeight(static_cast<int>(column->Buttons.size()) * Phobos::UI::SuperWeaponSidebar_CameoHeight);
 }
 
 int SWSidebarClass::GetMaximumButtonCount()
@@ -256,12 +280,15 @@ bool SWSidebarClass::IsEnabled()
 	return ScenarioExt::Global()->SWSidebar_Enable;
 }
 
+// =============================
+// PERF/STABILITY: robust presence checks + bitmap-based re-add
 void SWSidebarClass::RecheckCameo()
 {
 	auto& sidebar = SWSidebarClass::Instance;
 	auto& super = HouseClass::CurrentPlayer->Supers;
 	bool& recheckTechTree = HouseClass::CurrentPlayer->RecheckTechTree;
 
+	// pass 1: collect removals per column
 	for (const auto& column : sidebar.Columns)
 	{
 		std::vector<int> removeButtons;
@@ -269,69 +296,67 @@ void SWSidebarClass::RecheckCameo()
 
 		for (const auto& button : column->Buttons)
 		{
-			// Current logic: Remove if SuperWeapon is not present
-			if (!HouseClass::CurrentPlayer->Supers[button->SuperIndex]->IsPresent)
+			if (!button) continue;
+			const int idx = button->SuperIndex;
+			if (idx < 0 || !super.ValidIndex(idx)) continue;
+
+			// Remove if SuperWeapon is not present
+			if (!super[idx]->IsPresent)
 			{
-				removeButtons.push_back(button->SuperIndex);
-			if (super[button->SuperIndex]->IsPresent)
+				removeButtons.push_back(idx);
 				continue;
 			}
 
-			// NEW LOGIC: Remove if SW.AuxTechnos.Required=true and requirements not met
-			const auto pSWType = SuperWeaponTypeClass::Array.GetItemOrDefault(button->SuperIndex);
-			if (pSWType)
+			// Remove if SW.AuxTechnos.Required = true and requirements not met
+			if (const auto pSWType = SuperWeaponTypeClass::Array.GetItemOrDefault(idx))
 			{
-				const auto pSWExt = SWTypeExt::ExtMap.Find(pSWType);
-				if (pSWExt->SW_AuxTechnos_Required && !pSWExt->IsAvailable(HouseClass::CurrentPlayer))
+				if (const auto pSWExt = SWTypeExt::ExtMap.Find(pSWType))
 				{
-					removeButtons.push_back(button->SuperIndex);
+					if (pSWExt->SW_AuxTechnos_Required && !pSWExt->IsAvailable(HouseClass::CurrentPlayer))
+					{
+						removeButtons.push_back(idx);
+					}
 				}
 			}
 		}
 
-		if (removeButtons.size())
+		if (!removeButtons.empty())
 			recheckTechTree = true;
 
-		for (const auto& index : removeButtons)
+		for (const auto index : removeButtons)
 			column->RemoveButton(index);
 	}
 
-	// Check for SuperWeapons that should now be added back
-	// This handles the case where required technos are built and cameos should reappear
+	// pass 2: re-add missing cameos efficiently using a presence bitmap
+	std::vector<uint8_t> present(SuperWeaponTypeClass::Array.Count, 0);
+	for (const auto& column : sidebar.Columns)
+	{
+		for (const auto& button : column->Buttons)
+		{
+			if (!button) continue;
+			const int idx = button->SuperIndex;
+			if (idx >= 0 && idx < SuperWeaponTypeClass::Array.Count)
+				present[idx] = 1;
+		}
+	}
+
 	for (const auto superIdx : ScenarioExt::Global()->SWSidebar_Indices)
 	{
-		// Check if this SuperWeapon is already in the sidebar
-		bool alreadyPresent = false;
-		for (const auto& column : sidebar.Columns)
-		{
-			for (const auto& button : column->Buttons)
-			{
-				if (button->SuperIndex == superIdx)
-				{
-					alreadyPresent = true;
-					break;
-				}
-			}
-			if (alreadyPresent)
-				break;
-		}
-
-		// If not present, try to add it (AddButton will check all requirements)
-		if (!alreadyPresent)
+		if (superIdx >= 0 && superIdx < SuperWeaponTypeClass::Array.Count && !present[superIdx])
 		{
 			sidebar.AddButton(superIdx);
 		}
 	}
 
+	// re-layout & prune empty columns
 	sidebar.SortButtons();
-	int removes = 0;
 
+	int removes = 0;
 	for (const auto& column : sidebar.Columns)
 	{
 		if (column->Buttons.empty())
 			++removes;
 	}
-
 	for (; removes > 0; --removes)
 		sidebar.RemoveColumn();
 

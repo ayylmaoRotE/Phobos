@@ -4,28 +4,83 @@
 
 #include <Ext/House/Body.h>
 #include <Utilities/Debug.h>
+#include <algorithm> // lower_bound, rotate, sort
 
+static inline void StartAutoFireRetryCooldown(SuperClass* pSuper)
+{
+	if (!pSuper) { return; } // guard for analyzer & safety
 
-//this hook just for phobos NewSWType  
+	// Use the SW's own recharge time; fall back to 60 ticks if missing/zero
+	int rt = 0;
+	if (pSuper->Type && pSuper->Type->RechargeTime > 0)
+	{
+		rt = pSuper->Type->RechargeTime;
+	}
+	else
+	{
+		rt = 60; // safe fallback
+	}
+
+	// Only (re)start if not already cooling down
+	auto& timer = pSuper->RechargeTimer;   // safe after pSuper check
+	if (timer.GetTimeLeft() <= 0)
+	{
+		timer.Start(rt);
+	}
+}
+
+// SuperClass::Launch hook
 DEFINE_HOOK(0x6CC390, SuperClass_Launch, 0x6)
 {
+	// Return codes for this site:
+	//  - Return 0      => fall through to original game code
+	//  - Return 0x6CDE40 => jump to the Ares/Phobos place/fire path (our usual “handled/skip” exit)
+	enum { FallThrough = 0, JumpAresPlaceFire = 0x6CDE40 };
+
 	GET(SuperClass* const, pSuper, ECX);
 	GET_STACK(CellStruct const* const, pCell, 0x4);
 	GET_STACK(bool const, isPlayer, 0x8);
+	(void)isPlayer; // silence C4189 if unused here
 
-	// Safety checks to prevent memory corruption
+	// Basic guards — if anything is off, bail to the common Ares path
 	if (!pSuper || !pSuper->Type || !pSuper->Owner)
-		return 0x6CDE40;
+		return JumpAresPlaceFire;
 
-	// Add validation directly at launch point
-	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+	const auto* const pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
 	if (!pExt)
-		return 0x6CDE40;
-	
+		return JumpAresPlaceFire;
 
-	auto const handled = SWTypeExt::Activate(pSuper, *pCell, isPlayer);
+	// Prevent every-frame spam when RechargeTimer is -1 on AutoFire
+	if (pExt->SW_AutoFire && pSuper->RechargeTimer.GetTimeLeft() == -1)
+	{
+		pSuper->RechargeTimer.Start(0);
+		return JumpAresPlaceFire; // skip launching this frame
+	}
 
-	return handled ? 0x6CDE40 : 0;
+	// Predicate-only BP/CP gating for AutoFire (no mutations here)
+	if (pExt->SW_AutoFire)
+	{
+		auto* const pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
+		if (!pOwnerExt) return JumpAresPlaceFire;
+
+		if (pExt->BattlePoints_Amount != 0 &&
+			!pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
+		{
+			StartAutoFireRetryCooldown(pSuper);
+			return JumpAresPlaceFire; // skip
+		}
+
+		if (pExt->CommanderPoints_Amount != 0 &&
+			!pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
+		{
+			StartAutoFireRetryCooldown(pSuper);
+			return JumpAresPlaceFire; // skip
+		}
+	}
+
+	// If SWTypeExt handles the activation, continue via Ares path; otherwise fall through
+	const bool handled = SWTypeExt::Activate(pSuper, *pCell, isPlayer);
+	return handled ? JumpAresPlaceFire : FallThrough;
 }
 
 // Hook at 0x6CDE40 where Ares jumps to - this should catch Ares launches
@@ -38,26 +93,40 @@ DEFINE_HOOK(0x6CDE40, SuperClass_Place_FireExt, 0x5)
 	// Check if the SuperClass pointer is valid and not corrupted.
 	if (pSuper && VTable::Get(pSuper) == SuperClass::AbsVTable)
 	{
-		// Standardized resource validation for ALL superweapons using WarheadType pattern
+		// Validate type/ext safely
 		const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
-		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
-		
-		// Consistent resource checks using same pattern as WarheadType/Detonate.cpp
-		if (pSuper->Owner->CanTransactMoney(pExt->Money_Amount) &&
-			(pExt->BattlePoints_Amount == 0 || pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount)) &&
-			(pExt->CommanderPoints_Amount == 0 || pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount)))
+		if (!pExt) { return 0; }
+
+		// Validate AutoFire superweapons for ALL players (predicate only; no mutations)
+		if (pExt->SW_AutoFire)
 		{
-			// All checks passed, proceed with firing
+			const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
+			if (!pOwnerExt) { return 0; }
+
+			// BattlePoints gate
+			if (pExt->BattlePoints_Amount != 0 &&
+				!pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
+			{
+				StartAutoFireRetryCooldown(pSuper); // prevent immediate retry
+				return 0; // Skip the firing
+			}
+
+			// CommanderPoints gate
+			if (pExt->CommanderPoints_Amount != 0 &&
+				!pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
+			{
+				StartAutoFireRetryCooldown(pSuper); // prevent immediate retry
+				return 0; // Skip the firing
+			}
+			// ❗ No pre-deduction here — ApplyBattle/CommanderPoints on successful fire handles it.
 		}
-		else
-		{
-			return 0; // Skip firing due to insufficient resources
-		}
-		
+
 		SWTypeExt::FireSuperWeaponExt(pSuper, *pCell);
 	}
 	else
+	{
 		Debug::Log(__FUNCTION__": Hook entered with an invalid or corrupt SuperClass pointer.");
+	}
 
 	return 0;
 }
@@ -68,14 +137,21 @@ DEFINE_HOOK(0x6CB5EB, SuperClass_Grant_ShowTimer, 0x5)
 
 	if (SuperClass::ShowTimers.AddItem(pThis))
 	{
-		std::sort(SuperClass::ShowTimers.begin(), SuperClass::ShowTimers.end(),
-			[](SuperClass* a, SuperClass* b)
+		// Replace full re-sort with ordered insert (stable & faster when list grows)
+		auto& v = SuperClass::ShowTimers;
+		const int key = SWTypeExt::ExtMap.Find(pThis->Type)->ShowTimer_Priority.Get();
+
+		// Descending order by priority (same as comparator in original sort)
+		auto it = std::lower_bound(
+			v.begin(), v.end(), key,
+			[](SuperClass* a, int priorityKey)
 			{
 				const auto aExt = SWTypeExt::ExtMap.Find(a->Type);
-				const auto bExt = SWTypeExt::ExtMap.Find(b->Type);
-				return aExt->ShowTimer_Priority.Get() > bExt->ShowTimer_Priority.Get();
-			}
-		);
+				return aExt->ShowTimer_Priority.Get() > priorityKey;
+			});
+
+		// Move the just-added back element into position
+		std::rotate(it, v.end() - 1, v.end());
 	}
 
 	return 0x6CB63E;
@@ -83,19 +159,25 @@ DEFINE_HOOK(0x6CB5EB, SuperClass_Grant_ShowTimer, 0x5)
 
 DEFINE_HOOK(0x6DBE74, Tactical_SuperLinesCircles_ShowDesignatorRange, 0x7)
 {
-	if (!Phobos::Config::ShowDesignatorRange || !(RulesExt::Global()->ShowDesignatorRange) || Unsorted::CurrentSWType == -1)
+	if (!Phobos::Config::ShowDesignatorRange
+		|| !RulesExt::Global()->ShowDesignatorRange
+		|| Unsorted::CurrentSWType == -1)
 		return 0;
 
 	const auto pSuperType = SuperWeaponTypeClass::Array.GetItem(Unsorted::CurrentSWType);
-	const auto pExt = SWTypeExt::ExtMap.Find(pSuperType);
+	if (!pSuperType) { return 0; }
 
-	if (!pExt->ShowDesignatorRange)
+	const auto pExt = SWTypeExt::ExtMap.Find(pSuperType);
+	if (!pExt || !pExt->ShowDesignatorRange)
 		return 0;
 
 	for (const auto pCurrentTechno : TechnoClass::Array)
 	{
+		if (!pCurrentTechno) { continue; }
+
 		const auto pCurrentTechnoType = pCurrentTechno->GetTechnoType();
 		const auto pOwner = pCurrentTechno->Owner;
+		if (!pCurrentTechnoType || !pOwner) { continue; }
 
 		if (!pCurrentTechno->IsAlive
 			|| pCurrentTechno->InLimbo
@@ -107,10 +189,11 @@ DEFINE_HOOK(0x6DBE74, Tactical_SuperLinesCircles_ShowDesignatorRange, 0x7)
 		}
 
 		const auto pTechnoTypeExt = TechnoTypeExt::ExtMap.Find(pCurrentTechnoType);
+		if (!pTechnoTypeExt) { continue; }
 
-		const float radius = pOwner == HouseClass::CurrentPlayer
-			? (float)(pTechnoTypeExt->DesignatorRange.Get(pCurrentTechnoType->Sight))
-			: (float)(pTechnoTypeExt->InhibitorRange.Get(pCurrentTechnoType->Sight));
+		const float radius = (pOwner == HouseClass::CurrentPlayer)
+			? static_cast<float>(pTechnoTypeExt->DesignatorRange.Get(pCurrentTechnoType->Sight))
+			: static_cast<float>(pTechnoTypeExt->InhibitorRange.Get(pCurrentTechnoType->Sight));
 
 		CoordStruct coords = pCurrentTechno->GetCenterCoords();
 		coords.Z = MapClass::Instance.GetCellFloorHeight(coords);
@@ -135,7 +218,10 @@ DEFINE_HOOK(0x6CBEF4, SuperClass_AnimStage_UseWeeds, 0x6)
 	GET(SuperClass*, pSuper, ECX);
 	GET(SuperWeaponTypeClass*, pSWType, EBX);
 
+	if (!pSuper || !pSWType) { return 0; }
+
 	const auto pExt = SWTypeExt::ExtMap.Find(pSWType);
+	if (!pExt) { return 0; }
 
 	if (pExt->UseWeeds)
 	{
@@ -177,8 +263,10 @@ DEFINE_HOOK(0x6CBD2C, SuperClass_AI_UseWeeds, 0x6)
 	};
 
 	GET(SuperClass*, pSuper, ESI);
+	if (!pSuper) { return 0; }
 
 	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+	if (!pExt) { return 0; }
 
 	if (pExt->UseWeeds)
 	{
@@ -221,8 +309,10 @@ DEFINE_HOOK(0x6CC1E6, SuperClass_SetSWCharge_UseWeeds, 0x5)
 	enum { Skip = 0x6CC251 };
 
 	GET(SuperClass*, pSuper, EDI);
+	if (!pSuper) { return 0; }
 
 	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+	if (!pExt) { return 0; }
 
 	if (pExt->UseWeeds)
 		return Skip;
@@ -275,6 +365,7 @@ DEFINE_HOOK(0x6ABC9D, SidebarClass_GetObjectTabIndex_Super, 0x5)
 
 	const auto pSWType = SuperWeaponTypeClass::Array[typeIdx];
 	const auto pSWTypExt = SWTypeExt::ExtMap.Find(pSWType);
+	if (!pSWTypExt) { return 0; }
 
 	R->EAX(pSWTypExt->TabIndex);
 	return ApplyTabIndex;
@@ -298,13 +389,10 @@ DEFINE_JUMP(LJMP, 0x6A8D07, 0x6A8D17) // Skip tabIndex check
 DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 {
 	GET(SuperClass*, pSuper, ECX);
+	enum { ReturnIsReady = 0x6CC37D, ReturnZero = 0x6CC381, SkipAll = 0x6CC383 };
 
-	enum{ ReturnIsReady = 0x6CC37D, ReturnZero = 0x6CC381, SkipAll = 0x6CC383};
-
-	// Safety checks to prevent memory corruption
 	if (!pSuper || !pSuper->Type || !pSuper->Owner)
 		return ReturnZero;
-
 	if (pSuper->IsSuspended)
 		return ReturnZero;
 
@@ -315,20 +403,55 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 	}
 
 	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
-	if (!pExt)
+	if (!pExt || !pExt->IsAvailable(pSuper->Owner))
 		return ReturnZero;
 
+	// Cache once per call
+	const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
 
-	// Check SW_AuxTechnos availability
-	if (!pExt->IsAvailable(pSuper->Owner))
-		return ReturnZero;
+	// AutoFire: predicate-only BP/CP checks (no state changes)
+	if (pExt->SW_AutoFire)
+	{
+		if (!pOwnerExt) return ReturnZero;
 
+		if (pExt->BattlePoints_Amount != 0 &&
+			!pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
+		{
+			if (pSuper->RechargeTimer.GetTimeLeft() <= 0)
+			{
+				int rt = (pSuper->Type ? pSuper->Type->RechargeTime : 0);
+				if (rt <= 0) rt = 60;
+				pSuper->RechargeTimer.Start(rt);
+			}
+			return ReturnZero;
+		}
+		if (pExt->CommanderPoints_Amount != 0 &&
+			!pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
+		{
+				if (pSuper->RechargeTimer.GetTimeLeft() <= 0)
+				{
+					int rt = (pSuper->Type ? pSuper->Type->RechargeTime : 0);
+					if (rt <= 0) rt = 60;
+					pSuper->RechargeTimer.Start(rt);
+				}
+				return ReturnZero;
+		}
+	}
 
-	// Note: BattlePoints/CommanderPoints validation moved to firing point for consistency
+	// General readiness (non-AutoFire too)
+	if (pExt->BattlePoints_Amount != 0)
+	{
+		if (!pOwnerExt || !pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
+			return ReturnZero;
+	}
+	if (pExt->CommanderPoints_Amount != 0)
+	{
+		if (!pOwnerExt || !pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
+			return ReturnZero;
+	}
 
 	return ReturnIsReady;
 }
-
 // Executed before the Ares hook for launching AI super weapons, SW->IsReady property won't be updated anymore
 DEFINE_HOOK(0x4FD77C, ExpertAI_SuperWeaponAI_RecheckIsReady, 0x5)
 {
@@ -354,15 +477,17 @@ DEFINE_HOOK(0x6CB920, SuperClass_ClickFire, 0x6)
 	GET_STACK(CellStruct*, pCell, 0x4);
 	GET_STACK(bool, isPlayer, 0x8);
 
+	if (!pSuper || !pSuper->Type) { return 0; }
+
 	const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
-	
-	
+	if (!pExt) { return 0; }
+
 	// Only handle AutoFire superweapons with FindAuxTechno targeting
 	if (pExt->SW_AutoFire && pExt->ShouldUseAITargeting())
 	{
 		// Get target using FindAuxTechno AI targeting
-		CellStruct targetCell = pExt->GetAuxTechnoTarget(pSuper->Owner);
-		
+		const CellStruct targetCell = pExt->GetAuxTechnoTarget(pSuper->Owner);
+
 		if (targetCell != CellStruct::Empty)
 		{
 			*pCell = targetCell;
@@ -376,3 +501,4 @@ DEFINE_HOOK(0x6CB920, SuperClass_ClickFire, 0x6)
 
 	return 0;
 }
+
