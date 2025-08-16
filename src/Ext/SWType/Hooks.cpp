@@ -22,40 +22,6 @@ DEFINE_HOOK(0x6CC390, SuperClass_Launch, 0x6)
 	if (!pExt)
 		return 0x6CDE40;
 	
-	// Prevent every-frame spam when RechargeTimer is -1
-	if (pExt->SW_AutoFire && pSuper->RechargeTimer.GetTimeLeft() == -1)
-	{
-		pSuper->RechargeTimer.Start(0);
-		return 0x6CDE40; // Skip the launch this frame
-	}
-	
-	// Validate AutoFire superweapons for ALL players (not just human)
-	if (pExt->SW_AutoFire)
-	{
-		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
-		if (!pOwnerExt)
-			return 0x6CDE40;
-		
-		// Check BattlePoints requirements
-		if (pExt->BattlePoints_Amount != 0)
-		{
-			if (!pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
-			{
-				pSuper->RechargeTimer.Start(60); // Set cooldown to prevent immediate retry
-				return 0x6CDE40; // Skip the launch
-			}
-		}
-		
-		// Check CommanderPoints requirements  
-		if (pExt->CommanderPoints_Amount != 0)
-		{
-			if (!pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
-			{
-				pSuper->RechargeTimer.Start(60); // Set cooldown to prevent immediate retry
-				return 0x6CDE40; // Skip the launch
-			}
-		}
-	}
 
 	auto const handled = SWTypeExt::Activate(pSuper, *pCell, isPlayer);
 
@@ -72,37 +38,20 @@ DEFINE_HOOK(0x6CDE40, SuperClass_Place_FireExt, 0x5)
 	// Check if the SuperClass pointer is valid and not corrupted.
 	if (pSuper && VTable::Get(pSuper) == SuperClass::AbsVTable)
 	{
-		// Add validation here where Ares sends us
+		// Standardized resource validation for ALL superweapons using WarheadType pattern
 		const auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
 		
-		// Validate AutoFire superweapons for ALL players
-		if (pExt->SW_AutoFire)
+		// Consistent resource checks using same pattern as WarheadType/Detonate.cpp
+		if (pSuper->Owner->CanTransactMoney(pExt->Money_Amount) &&
+			(pExt->BattlePoints_Amount == 0 || pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount)) &&
+			(pExt->CommanderPoints_Amount == 0 || pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount)))
 		{
-			const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
-			
-			// Check BattlePoints requirements using CanTransact method
-			if (pExt->BattlePoints_Amount != 0)
-			{
-				if (!pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
-				{
-					pSuper->RechargeTimer.Start(60); // Set cooldown to prevent immediate retry
-					return 0; // Skip the firing
-				}
-				else if (pExt->BattlePoints_Amount < 0)
-					pOwnerExt->BattlePoints += pExt->BattlePoints_Amount; // Deduct cost
-			}
-			
-			// Check CommanderPoints requirements using CanTransact method
-			if (pExt->CommanderPoints_Amount != 0)
-			{
-				if (!pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
-				{
-					pSuper->RechargeTimer.Start(60); // Set cooldown to prevent immediate retry
-					return 0; // Skip the firing  
-				}
-				else if (pExt->CommanderPoints_Amount < 0)
-					pOwnerExt->CommanderPoints += pExt->CommanderPoints_Amount; // Deduct cost
-			}
+			// All checks passed, proceed with firing
+		}
+		else
+		{
+			return 0; // Skip firing due to insufficient resources
 		}
 		
 		SWTypeExt::FireSuperWeaponExt(pSuper, *pCell);
@@ -374,55 +323,8 @@ DEFINE_HOOK(0x6CC367, SuperClass_IsReady_BattlePoints, 0xD)
 	if (!pExt->IsAvailable(pSuper->Owner))
 		return ReturnZero;
 
-	// For AutoFire superweapons, also check BattlePoints/CommanderPoints in IsReady
-	if (pExt->SW_AutoFire)
-	{
-		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
-		if (!pOwnerExt)
-			return ReturnZero;
-		
-		// Check BattlePoints requirements
-		if (pExt->BattlePoints_Amount != 0)
-		{
-			if (!pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
-			{
-				// Set a cooldown to prevent spam and force superweapon to wait
-				if (pSuper->RechargeTimer.GetTimeLeft() <= 0)
-				{
-					pSuper->RechargeTimer.Start(60); // 60-frame cooldown
-				}
-				return ReturnZero;
-			}
-		}
-		
-		// Check CommanderPoints requirements  
-		if (pExt->CommanderPoints_Amount != 0)
-		{
-			if (!pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
-			{
-				// Set a cooldown to prevent spam and force superweapon to wait
-				if (pSuper->RechargeTimer.GetTimeLeft() <= 0)
-				{
-					pSuper->RechargeTimer.Start(60); // 60-frame cooldown
-				}
-				return ReturnZero;
-			}
-		}
-	}
 
-	if (pExt->BattlePoints_Amount != 0)
-	{
-		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
-		if (!pOwnerExt || !pOwnerExt->CanTransactBattlePoints(pExt->BattlePoints_Amount))
-			return ReturnZero;
-	}
-
-	if (pExt->CommanderPoints_Amount != 0)
-	{
-		const auto pOwnerExt = HouseExt::ExtMap.Find(pSuper->Owner);
-		if (!pOwnerExt || !pOwnerExt->CanTransactCommanderPoints(pExt->CommanderPoints_Amount))
-			return ReturnZero;
-	}
+	// Note: BattlePoints/CommanderPoints validation moved to firing point for consistency
 
 	return ReturnIsReady;
 }
