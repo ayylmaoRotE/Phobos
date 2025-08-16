@@ -169,7 +169,7 @@ DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
 
 	if (Phobos::UI::HarvesterCounter_Show && Phobos::Config::ShowHarvesterCounter)
 	{
-		const auto pSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
+		const auto pHarvesterSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
 		wchar_t counter[0x20];
 		const auto nActive = HouseExt::ActiveHarvesterCount(pPlayer);
 		const auto nTotal = HouseExt::TotalHarvesterCount(pPlayer);
@@ -177,13 +177,13 @@ DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
 
 		const ColorStruct clrToolTip = nPercentage > Phobos::UI::HarvesterCounter_ConditionYellow
 			? Drawing::TooltipColor : nPercentage > Phobos::UI::HarvesterCounter_ConditionRed
-			? pSideExt->Sidebar_HarvesterCounter_Yellow : pSideExt->Sidebar_HarvesterCounter_Red;
+			? pHarvesterSideExt->Sidebar_HarvesterCounter_Yellow : pHarvesterSideExt->Sidebar_HarvesterCounter_Red;
 
 		swprintf_s(counter, L"%ls%d/%d", Phobos::UI::HarvesterLabel, nActive, nTotal);
 
 		Point2D vPos = {
-			DSurface::Sidebar->GetWidth() / 2 + 50 + pSideExt->Sidebar_HarvesterCounter_Offset.Get().X,
-			2 + pSideExt->Sidebar_HarvesterCounter_Offset.Get().Y
+			DSurface::Sidebar->GetWidth() / 2 + 50 + pHarvesterSideExt->Sidebar_HarvesterCounter_Offset.Get().X,
+			2 + pHarvesterSideExt->Sidebar_HarvesterCounter_Offset.Get().Y
 		};
 
 		DSurface::Sidebar->DrawText(counter, &vRect, &vPos, Drawing::RGB_To_Int(clrToolTip), 0,
@@ -192,14 +192,14 @@ DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
 
 	if (Phobos::UI::PowerDelta_Show && Phobos::Config::ShowPowerDelta && pPlayer->Buildings.Count)
 	{
-		const auto pSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
+		const auto pPowerSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
 		wchar_t counter[0x20];
 
 		ColorStruct clrToolTip;
 
 		if (pPlayer->PowerBlackoutTimer.InProgress())
 		{
-			clrToolTip = pSideExt->Sidebar_PowerDelta_Grey;
+			clrToolTip = pPowerSideExt->Sidebar_PowerDelta_Grey;
 			swprintf_s(counter, L"%ls", Phobos::UI::PowerBlackoutLabel);
 		}
 		else
@@ -211,34 +211,34 @@ DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
 				? Phobos::UI::PowerDelta_ConditionRed * 2.f : Phobos::UI::PowerDelta_ConditionYellow;
 
 			clrToolTip = percent < Phobos::UI::PowerDelta_ConditionYellow
-				? pSideExt->Sidebar_PowerDelta_Green : LESS_EQUAL(percent, Phobos::UI::PowerDelta_ConditionRed)
-				? pSideExt->Sidebar_PowerDelta_Yellow : pSideExt->Sidebar_PowerDelta_Red;
+				? pPowerSideExt->Sidebar_PowerDelta_Green : LESS_EQUAL(percent, Phobos::UI::PowerDelta_ConditionRed)
+				? pPowerSideExt->Sidebar_PowerDelta_Yellow : pPowerSideExt->Sidebar_PowerDelta_Red;
 
 			swprintf_s(counter, L"%ls%+d", Phobos::UI::PowerLabel, delta);
 		}
 
 		Point2D vPos = {
-			DSurface::Sidebar->GetWidth() / 2 - 70 + pSideExt->Sidebar_PowerDelta_Offset.Get().X,
-			2 + pSideExt->Sidebar_PowerDelta_Offset.Get().Y
+			DSurface::Sidebar->GetWidth() / 2 - 70 + pPowerSideExt->Sidebar_PowerDelta_Offset.Get().X,
+			2 + pPowerSideExt->Sidebar_PowerDelta_Offset.Get().Y
 		};
 
 		auto const TextFlags = static_cast<TextPrintType>(static_cast<int>(TextPrintType::UseGradPal | TextPrintType::Metal12)
-				| static_cast<int>(pSideExt->Sidebar_PowerDelta_Align.Get()));
+				| static_cast<int>(pPowerSideExt->Sidebar_PowerDelta_Align.Get()));
 
 		DSurface::Sidebar->DrawText(counter, &vRect, &vPos, Drawing::RGB_To_Int(clrToolTip), 0, TextFlags);
 	}
 
 	if (Phobos::UI::WeedsCounter_Show && Phobos::Config::ShowWeedsCounter)
 	{
-		const auto pSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
+		const auto pWeedsSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
 		wchar_t counter[0x20];
-		const ColorStruct clrToolTip = pSideExt->Sidebar_WeedsCounter_Color.Get(Drawing::TooltipColor);
+		const ColorStruct clrToolTip = pWeedsSideExt->Sidebar_WeedsCounter_Color.Get(Drawing::TooltipColor);
 
 		swprintf_s(counter, L"%d", static_cast<int>(pPlayer->OwnedWeed.GetTotalAmount()));
 
 		Point2D vPos = {
-			DSurface::Sidebar->GetWidth() / 2 + 50 + pSideExt->Sidebar_WeedsCounter_Offset.Get().X,
-			2 + pSideExt->Sidebar_WeedsCounter_Offset.Get().Y
+			DSurface::Sidebar->GetWidth() / 2 + 50 + pWeedsSideExt->Sidebar_WeedsCounter_Offset.Get().X,
+			2 + pWeedsSideExt->Sidebar_WeedsCounter_Offset.Get().Y
 		};
 
 		DSurface::Sidebar->DrawText(counter, &vRect, &vPos, Drawing::RGB_To_Int(clrToolTip), 0,

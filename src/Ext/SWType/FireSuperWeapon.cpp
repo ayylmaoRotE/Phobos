@@ -60,7 +60,7 @@ void SWTypeExt::FireSuperWeaponExt(SuperClass* pSW, const CellStruct& cell)
 
 	if (!pTypeExt->SW_Link.empty())
 	{
-		pTypeExt->ApplyLinkedSW(pSW);
+		pTypeExt->ApplyLinkedSW(pSW, cell);
 	}
 
 	// Ares' Type=EMPulse SW
@@ -476,7 +476,7 @@ void SWTypeExt::ExtData::HandleEMPulseLaunch(SuperClass* pSW, const CellStruct& 
 	}
 }
 
-void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW)
+void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW, const CellStruct& cell)
 {
 	if (!pSW || !pSW->Owner) { return; }
 
@@ -486,11 +486,18 @@ void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW)
 	if (pHouse->Defeated || !notObserver)
 		return;
 
-	auto linkedSW = [=](const int swIdxToAdd)
+	// Early exit if Grant=no - don't process any linked superweapons at all
+	if (!this->SW_Link_Grant)
+	{
+		return;
+	}
+
+	auto linkedSW = [=, &cell](const int swIdxToAdd)
 		{
 			if (const auto pSuper = pHouse->Supers.GetItem(swIdxToAdd))
 			{
-				const bool granted = this->SW_Link_Grant && !pSuper->IsPresent && pSuper->Grant(true, false, false);
+
+				const bool granted = !pSuper->IsPresent && pSuper->Grant(true, false, false);
 				bool isActive = granted;
 
 				if (pSuper->IsPresent)
@@ -519,8 +526,13 @@ void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW)
 
 				if (granted && notObserver && pHouse->IsCurrentPlayer())
 				{
-					if (MouseClass::Instance.AddCameo(AbstractType::Special, swIdxToAdd))
-						MouseClass::Instance.RepaintSidebar(1);
+					// Only add cameo if linked SW has SW.ShowCameo=yes
+					const auto pLinkedSWExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+					if (pLinkedSWExt && pLinkedSWExt->SW_ShowCameo)
+					{
+						if (MouseClass::Instance.AddCameo(AbstractType::Special, swIdxToAdd))
+							MouseClass::Instance.RepaintSidebar(1);
+					}
 				}
 
 				return isActive;

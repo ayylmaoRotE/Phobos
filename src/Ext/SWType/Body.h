@@ -225,7 +225,7 @@ public:
 		void ApplyBattlePoints(SuperClass* pSW);
 		void ApplyCommanderPoints(SuperClass* pSW);
 
-		void ApplyLinkedSW(SuperClass* pSW);
+		void ApplyLinkedSW(SuperClass* pSW, const CellStruct& cell);
 
 		CellStruct GetAuxTechnoTarget(HouseClass* pHouse) const;
 		bool ShouldUseAITargeting() const;
