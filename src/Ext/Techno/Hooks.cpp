@@ -18,6 +18,7 @@
 #include <Utilities/Helpers.Alex.h>
 #include <Utilities/AresHelper.h>
 #include <Utilities/AresFunctions.h>
+#include <New/AnonymousType/GiftBoxFunctional.h>
 
 #pragma region GetTechnoType
 
@@ -36,7 +37,13 @@ DEFINE_HOOK(0x6F9E50, TechnoClass_AI, 0x5)
 {
 	GET(TechnoClass*, pThis, ECX);
 
-	TechnoExt::ExtMap.Find(pThis)->OnEarlyUpdate();
+	auto pExt = TechnoExt::ExtMap.Find(pThis);
+	pExt->OnEarlyUpdate();
+
+	// Update GiftBox
+	auto pTypeExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
+	if (pExt && pTypeExt)
+		GiftBoxFunctional::AI(pExt, pTypeExt);
 
 	return 0;
 }
@@ -230,6 +237,9 @@ DEFINE_HOOK(0x6F42F7, TechnoClass_Init, 0x2)
 
 	if (!pExt->AE.HasTint && !pExt->CurrentShieldType)
 		pExt->UpdateTintValues();
+
+	// Initialize GiftBox
+	GiftBoxFunctional::Init(pExt, pTypeExt);
 
 	if (pTypeExt->Harvester_Counted)
 		HouseExt::ExtMap.Find(pThis->Owner)->OwnedCountedHarvesters.push_back(pThis);

@@ -8,6 +8,7 @@
 #include <Ext/Building/Body.h>
 
 #include <map>
+#include <unordered_map>
 
 class HouseExt
 {
@@ -57,6 +58,7 @@ public:
 		int NumShipyards_NonMFB;
 
 		std::map<int, std::vector<int>> SuspendedEMPulseSWs;
+		std::unordered_map<BuildingTypeClass*, int> Building_BuildSpeedBonusCounter;
 		// standalone? no need and not a good idea
 		struct SWExt
 		{

@@ -15,6 +15,7 @@
 #include <New/Type/Affiliated/DroppodTypeClass.h>
 #include <New/Type/Affiliated/TiberiumEaterTypeClass.h>
 #include <New/Type/Affiliated/CreateUnitTypeClass.h>
+#include <New/AnonymousType/GiftBoxData.h>
 
 class Matrix3D;
 class ParticleSystemTypeClass;
@@ -300,6 +301,14 @@ public:
 		ValueableVector<int> BuildLimitGroup_ExtraLimit_MaxCount;
 		Valueable<int> BuildLimitGroup_ExtraLimit_MaxNum;
 
+		// Build time customization
+		Nullable<double> BuildTime_Speed;
+		Nullable<int> BuildTime_Cost;
+		Nullable<double> BuildTime_LowPowerPenalty;
+		Nullable<double> BuildTime_MinLowPower;
+		Nullable<double> BuildTime_MaxLowPower;
+		Nullable<double> BuildTime_MultipleFactory;
+
 		Nullable<bool> AmphibiousEnter;
 		Nullable<bool> AmphibiousUnload;
 		Nullable<bool> NoQueueUpToEnter;
@@ -403,6 +412,7 @@ public:
 		Nullable<bool> ExtendedAircraftMissions_SmoothMoving;
 		Nullable<bool> ExtendedAircraftMissions_EarlyDescend;
 		Nullable<bool> ExtendedAircraftMissions_RearApproach;
+		Valueable<bool> NoAirportBound_DisableRadioContact;
 
 		Valueable<double> FallingDownDamage;
 		Nullable<double> FallingDownDamage_Water;
@@ -436,6 +446,8 @@ public:
 		ValueableVector<int> VoiceEliteWeaponAttacks;
 
 		Nullable<bool> InfantryAutoDeploy;
+
+		GiftBoxData MyGiftBoxData;
 
 		ExtData(TechnoTypeClass* OwnerObject) : Extension<TechnoTypeClass>(OwnerObject)
 			, HealthBar_Hide { false }
@@ -698,6 +710,14 @@ public:
 			, BuildLimitGroup_ExtraLimit_MaxCount {}
 			, BuildLimitGroup_ExtraLimit_MaxNum { 0 }
 
+			// Build time customization
+			, BuildTime_Speed {}
+			, BuildTime_Cost {}
+			, BuildTime_LowPowerPenalty {}
+			, BuildTime_MinLowPower {}
+			, BuildTime_MaxLowPower {}
+			, BuildTime_MultipleFactory {}
+
 			, AmphibiousEnter {}
 			, AmphibiousUnload {}
 			, NoQueueUpToEnter {}
@@ -782,6 +802,7 @@ public:
 			, ExtendedAircraftMissions_SmoothMoving {}
 			, ExtendedAircraftMissions_EarlyDescend {}
 			, ExtendedAircraftMissions_RearApproach {}
+			, NoAirportBound_DisableRadioContact { false }
 
 			, FallingDownDamage { 1.0 }
 			, FallingDownDamage_Water {}

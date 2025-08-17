@@ -8,6 +8,7 @@
 #include <Ext/WeaponType/Body.h>
 #include <Ext/TEvent/Body.h>
 #include <Ext/House/Body.h>
+#include <New/AnonymousType/GiftBoxFunctional.h>
 
 namespace ReceiveDamageTemp
 {
@@ -198,6 +199,24 @@ DEFINE_HOOK(0x701900, TechnoClass_ReceiveDamage_Shield, 0x6)
 				GameCreate<AnimClass>(pAnimType, coords);
 			}
 		}
+	}
+
+	// Handle GiftBox TakeDamage
+	auto pTypeExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
+	if (pTypeExt)
+	{
+		DamageState damageState = DamageState::Unaffected;
+		if (damage > 0)
+		{
+			if (pThis->Health <= 0)
+				damageState = DamageState::NowDead;
+			else
+				damageState = DamageState::Unchanged;
+		}
+		
+		auto pTechnoExt = TechnoExt::ExtMap.Find(pThis);
+		if (pTechnoExt)
+			GiftBoxFunctional::TakeDamage(pTechnoExt, pTypeExt, args->WH, damageState);
 	}
 
 	return 0;

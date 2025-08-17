@@ -7,6 +7,8 @@
 #include <Utilities/Container.h>
 #include <Utilities/TemplateDef.h>
 
+#include <New/AnonymousType/BuildSpeedBonus.h>
+
 class BuildingTypeExt
 {
 public:
@@ -33,6 +35,8 @@ public:
 		Valueable<bool> Refinery_UseStorage;
 		Valueable<PartialVector2D<double>> InitialStrength_Cloning;
 		Valueable<bool> ExcludeFromMultipleFactoryBonus;
+
+		BuildSpeedBonus SpeedBonus;
 
 		ValueableIdx<VocClass> Grinding_Sound;
 		Valueable<WeaponTypeClass*> Grinding_Weapon;
@@ -173,6 +177,11 @@ public:
 		int GetSuperWeaponCount() const;
 		int GetSuperWeaponIndex(int index, HouseClass* pHouse) const;
 		int GetSuperWeaponIndex(int index) const;
+
+		// Build speed bonus functions
+		static double GetExternalFactorySpeedBonus(TechnoClass* pWhat);
+		static double GetExternalFactorySpeedBonus(TechnoClass* pWhat, HouseClass* pOwner);
+		static double GetExternalFactorySpeedBonus(TechnoTypeClass* pWhat, HouseClass* pOwner);
 
 		virtual ~ExtData() = default;
 

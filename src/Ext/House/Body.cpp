@@ -629,6 +629,7 @@ void HouseExt::ExtData::Serialize(T& Stm)
 {
 	Stm
 		.Process(this->PowerPlantEnhancers)
+		.Process(this->Building_BuildSpeedBonusCounter)
 		.Process(this->OwnedLimboDeliveredBuildings)
 		.Process(this->OwnedCountedHarvesters)
 		.Process(this->LimboAircraft)

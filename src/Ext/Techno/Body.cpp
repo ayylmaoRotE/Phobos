@@ -10,6 +10,7 @@
 #include <Ext/WeaponType/Body.h>
 
 #include <Utilities/AresFunctions.h>
+#include <New/AnonymousType/GiftBoxFunctional.h>
 
 TechnoExt::ExtContainer TechnoExt::ExtMap;
 UnitClass* TechnoExt::Deployer = nullptr;
@@ -793,6 +794,7 @@ void TechnoExt::ExtData::Serialize(T& Stm)
 		.Process(this->TintIntensityAllies)
 		.Process(this->TintIntensityEnemies)
 		.Process(this->AttackMoveFollowerTempCount)
+		.Process(this->MyGiftBox)
 		;
 }
 
@@ -848,6 +850,15 @@ DEFINE_HOOK(0x6F3260, TechnoClass_CTOR, 0x5)
 DEFINE_HOOK(0x6F4500, TechnoClass_DTOR, 0x5)
 {
 	GET(TechnoClass*, pItem, ECX);
+
+	// Handle GiftBox Destroy
+	if (pItem && pItem->GetTechnoType())
+	{
+		auto pExt = TechnoExt::ExtMap.Find(pItem);
+		auto pTypeExt = TechnoTypeExt::ExtMap.Find(pItem->GetTechnoType());
+		if (pExt && pTypeExt)
+			GiftBoxFunctional::Destroy(pExt, pTypeExt);
+	}
 
 	TechnoExt::ExtMap.Remove(pItem);
 

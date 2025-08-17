@@ -9,6 +9,7 @@
 #include <New/Entity/ShieldClass.h>
 #include <New/Entity/LaserTrailClass.h>
 #include <New/Entity/AttachEffectClass.h>
+#include <New/AnonymousType/GiftBox.h>
 
 class BulletClass;
 
@@ -91,6 +92,8 @@ public:
 
 		// ExtraFire ROF timers - not serialized, reset on load
 		std::map<WeaponTypeClass*, CDTimerClass> ExtraFireTimers;
+
+		std::unique_ptr<GiftBox> MyGiftBox;
 
 		ExtData(TechnoClass* OwnerObject) : Extension<TechnoClass>(OwnerObject)
 			, TypeExtData { nullptr }

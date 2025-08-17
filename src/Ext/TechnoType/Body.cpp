@@ -874,6 +874,14 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->BuildLimitGroup_ExtraLimit_MaxCount.Read(exINI, pSection, "BuildLimitGroup.ExtraLimit.MaxCount");
 	this->BuildLimitGroup_ExtraLimit_MaxNum.Read(exINI, pSection, "BuildLimitGroup.ExtraLimit.MaxNum");
 
+	// Build time customization
+	this->BuildTime_Speed.Read(exINI, pSection, "BuildTime.Speed");
+	this->BuildTime_Cost.Read(exINI, pSection, "BuildTime.Cost");
+	this->BuildTime_LowPowerPenalty.Read(exINI, pSection, "BuildTime.LowPowerPenalty");
+	this->BuildTime_MinLowPower.Read(exINI, pSection, "BuildTime.MinLowPower");
+	this->BuildTime_MaxLowPower.Read(exINI, pSection, "BuildTime.MaxLowPower");
+	this->BuildTime_MultipleFactory.Read(exINI, pSection, "BuildTime.MultipleFactory");
+
 	this->AmphibiousEnter.Read(exINI, pSection, "AmphibiousEnter");
 	this->AmphibiousUnload.Read(exINI, pSection, "AmphibiousUnload");
 	this->NoQueueUpToEnter.Read(exINI, pSection, "NoQueueUpToEnter");
@@ -958,6 +966,7 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->ExtendedAircraftMissions_SmoothMoving.Read(exINI, pSection, "ExtendedAircraftMissions.SmoothMoving");
 	this->ExtendedAircraftMissions_EarlyDescend.Read(exINI, pSection, "ExtendedAircraftMissions.EarlyDescend");
 	this->ExtendedAircraftMissions_RearApproach.Read(exINI, pSection, "ExtendedAircraftMissions.RearApproach");
+	this->NoAirportBound_DisableRadioContact.Read(exINI, pSection, "NoAirportBound.DisableRadioContact");
 
 	this->FallingDownDamage.Read(exINI, pSection, "FallingDownDamage");
 	this->FallingDownDamage_Water.Read(exINI, pSection, "FallingDownDamage.Water");
@@ -978,6 +987,9 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->BattlePoints.Read(exINI, pSection, "BattlePoints");
 
 	this->InfantryAutoDeploy.Read(exINI, pSection, "InfantryAutoDeploy");
+
+	// GiftBox feature
+	this->MyGiftBoxData.Read(exINI, pSection);
 
 	// Ares 0.2
 	this->RadarJamRadius.Read(exINI, pSection, "RadarJamRadius");
@@ -1607,6 +1619,14 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->BuildLimitGroup_ExtraLimit_MaxCount)
 		.Process(this->BuildLimitGroup_ExtraLimit_MaxNum)
 
+		// Build time customization
+		.Process(this->BuildTime_Speed)
+		.Process(this->BuildTime_Cost)
+		.Process(this->BuildTime_LowPowerPenalty)
+		.Process(this->BuildTime_MinLowPower)
+		.Process(this->BuildTime_MaxLowPower)
+		.Process(this->BuildTime_MultipleFactory)
+
 		.Process(this->AmphibiousEnter)
 		.Process(this->AmphibiousUnload)
 		.Process(this->NoQueueUpToEnter)
@@ -1691,6 +1711,7 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->ExtendedAircraftMissions_SmoothMoving)
 		.Process(this->ExtendedAircraftMissions_EarlyDescend)
 		.Process(this->ExtendedAircraftMissions_RearApproach)
+		.Process(this->NoAirportBound_DisableRadioContact)
 
 		.Process(this->FallingDownDamage)
 		.Process(this->FallingDownDamage_Water)
