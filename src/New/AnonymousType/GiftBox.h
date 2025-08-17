@@ -1,84 +1,53 @@
 #pragma once
-#include <GeneralStructures.h>
-#include <Utilities/SavegameDef.h>
 
-class GiftBoxData;
-class TechnoClass;
+#include "GiftBoxData.h"
+#include <TechnoClass.h>
+#include <Utilities/SavegameDef.h> // if available in your tree
 
 class GiftBox
 {
 public:
-	bool IsOpen;
-	int Delay;
-	CDTimerClass DelayTimer;
+    int  Delay { 0 };
+    CDTimerClass DelayTimer {};
+    bool IsOpen { false };
 
-	GiftBox(int delay) :
-		IsOpen { false }
-		, Delay { delay }
-		, DelayTimer { }
-	{
-		if (delay > 0)
-			DelayTimer.Start(delay);
-	}
+    GiftBox() = default;
+    explicit GiftBox(int delay)
+        : Delay(delay)
+        , DelayTimer(delay)
+        , IsOpen(false)
+    { }
 
-	GiftBox() :
-		IsOpen { false }
-		, Delay { 0 }
-		, DelayTimer { }
-	{}
+    inline bool CanOpen() const
+    {
+        return (Delay <= 0) || DelayTimer.Expired();
+    }
 
-	~GiftBox() = default;
+    // IMPORTANT: no side-effect (do NOT set IsOpen here)
+    inline bool Timeup() const
+    {
+        return CanOpen();
+    }
 
-	GiftBox(const GiftBox& other) = default;
-	GiftBox& operator=(const GiftBox& other) = default;
+    inline void Reset(int delay)
+    {
+        Delay = delay;
+        DelayTimer.Start(delay);
+        IsOpen = false;
+    }
 
-	bool CanOpen()
-	{
-		return !IsOpen && Timeup();
-	}
-
-	bool Timeup()
-	{
-		if (Delay <= 0 || DelayTimer.Expired())
-		{
-			return true;
-		}
-		return false;
-	}
-
-	void Reset(int nDelay)
-	{
-		IsOpen = false;
-		Delay = nDelay;
-
-		if (Delay > 0)
-			DelayTimer.Start(nDelay);
-	}
-
-	void Release(TechnoClass* pOwner, GiftBoxData& nData);
-
-	bool Load(PhobosStreamReader& Stm, bool RegisterForChange)
-	{ return Serialize(Stm); }
-
-	bool Save(PhobosStreamWriter& Stm) const
-	{ return const_cast<GiftBox*>(this)->Serialize(Stm); }
-
-private:
-	template <typename T>
-	bool Serialize(T& Stm)
-	{
-		return Stm
-			.Process(this->IsOpen)
-			.Process(this->Delay)
-			.Process(this->DelayTimer)
-			.Success();
-	}
+    void Release(TechnoClass* pOwner, GiftBoxData& nData);
 };
 
-template <>
-struct Savegame::ObjectFactory<GiftBox> {
-	std::unique_ptr<GiftBox> operator() (PhobosStreamReader& Stm) const {
-		return std::make_unique<GiftBox>();
-	}
-};
-
+// Let save/load reconstruct a GiftBox
+namespace Savegame
+{
+    template <>
+    struct ObjectFactory<GiftBox>
+    {
+        std::unique_ptr<GiftBox> operator()(PhobosStreamReader&) const
+        {
+            return std::make_unique<GiftBox>();
+        }
+    };
+}

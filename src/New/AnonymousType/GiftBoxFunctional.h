@@ -1,18 +1,15 @@
 #pragma once
 #include <GeneralDefinitions.h>
-#include <Ext/TechnoType/Body.h>
 #include <Ext/Techno/Body.h>
+#include <Ext/TechnoType/Body.h>
 
-// Aliases to match Otamaa's naming convention
-using TechnoExtData = TechnoExt::ExtData;
-using TechnoTypeExtData = TechnoTypeExt::ExtData;
-
+class TechnoClass;
 class WarheadTypeClass;
 
 struct GiftBoxFunctional
 {
-	static void Init(TechnoExtData* pExt, TechnoTypeExtData* pTypeExt);
-	static void AI(TechnoExtData* pExt, TechnoTypeExtData* pTypeExt);
-	static void Destroy(TechnoExtData* pExt, TechnoTypeExtData* pTypeExt);
-	static void TakeDamage(TechnoExtData* pExt, TechnoTypeExtData* pTypeExt, WarheadTypeClass* pWH, DamageState nState);
+    static void Init(TechnoExt::ExtData* pExt, TechnoTypeExt::ExtData* pTypeExt);
+    static void Destroy(TechnoExt::ExtData* pExt, TechnoTypeExt::ExtData* pTypeExt);
+    static void AI(TechnoExt::ExtData* pExt, TechnoTypeExt::ExtData* pTypeExt);
+    static void TakeDamage(TechnoExt::ExtData* pExt, TechnoTypeExt::ExtData* pTypeExt, WarheadTypeClass* pWH, DamageState nState);
 };
