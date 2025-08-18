@@ -231,8 +231,6 @@ public:
 		bool HealthCheck;
 		TechnoClass* DamageAreaTarget;
 
-		Valueable<bool> CanKill;
-
 		std::map<std::string, AnimTypeClass*> ArmorHitAnim;
 		// Stable storage for dynamic HitAnim serialization using parallel vectors
 		std::vector<std::string> ArmorNames;
