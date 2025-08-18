@@ -89,6 +89,7 @@ public:
 	CellClass* pCell, CoordStruct nLocation, bool heightFlag, bool isMeteor, bool warheadDetonate, bool explodeOnWater, bool splashAnimsPickRandom);
 
 	static void SpawnFireAnims(AnimClass* pThis);
+	static void SpawnConcurrentAnims(AnimClass* pThis);
 
 	static void InvalidateTechnoPointers(TechnoClass* pTechno);
 	static void InvalidateParticleSystemPointers(ParticleSystemClass* pParticleSystem);

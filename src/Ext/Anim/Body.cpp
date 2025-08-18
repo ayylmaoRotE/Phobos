@@ -360,6 +360,43 @@ void AnimExt::SpawnFireAnims(AnimClass* pThis)
 	}
 }
 
+void AnimExt::SpawnConcurrentAnims(AnimClass* pThis)
+{
+	if (!pThis || !pThis->Type)
+		return;
+
+	const auto pTypeExt = AnimTypeExt::ExtMap.Find(pThis->Type);
+	
+	if (pTypeExt->ConcurrentAnim.empty() || pTypeExt->ConcurrentChance.Get() <= 0.0)
+		return;
+
+	const auto pCoord = pThis->GetCoords();
+
+	// Extended logic: spawn multiple animations with individual chances
+	for (size_t i = 0; i < pTypeExt->ConcurrentAnim.size(); i++)
+	{
+		auto pAnimType = pTypeExt->ConcurrentAnim[i];
+		if (!pAnimType)
+			continue;
+
+		// Get individual chance or fallback to default chance
+		double chance = pTypeExt->ConcurrentChances.size() > i ? 
+			pTypeExt->ConcurrentChances[i] : pTypeExt->ConcurrentChance.Get();
+
+		// Check if animation should spawn
+		if (ScenarioClass::Instance->Random.RandomDouble() <= chance)
+		{
+			// Prevent infinite recursion
+			if (pAnimType == pThis->Type)
+				continue;
+
+			auto pNewAnim = GameCreate<AnimClass>(pAnimType, pCoord, 0, 1, 0x600, 0, false);
+			if (pNewAnim)
+				pNewAnim->Owner = pThis->GetOwningHouse();
+		}
+	}
+}
+
 void AnimExt::CreateRandomAnim(const std::vector<AnimTypeClass*>& AnimList, CoordStruct coords, TechnoClass* pTechno, HouseClass* pHouse, bool invoker, bool ownedObject)
 {
 	if (AnimList.empty())
@@ -521,6 +558,9 @@ DEFINE_HOOK(0x4226F6, AnimClass_CTOR, 0x6)
 		SyncLogger::AddAnimCreationSyncLogEvent(CTORTemp::coords, CTORTemp::callerAddress);
 
 	AnimExt::ExtMap.Allocate(pItem);
+
+	// Spawn concurrent animations
+	AnimExt::SpawnConcurrentAnims(pItem);
 
 	return 0;
 }
