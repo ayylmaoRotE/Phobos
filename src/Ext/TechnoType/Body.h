@@ -447,6 +447,8 @@ public:
 
 		Nullable<bool> InfantryAutoDeploy;
 
+		Nullable<bool> TurretResponse;
+
 		GiftBoxData MyGiftBoxData;
 
 		ExtData(TechnoTypeClass* OwnerObject) : Extension<TechnoTypeClass>(OwnerObject)
@@ -836,6 +838,8 @@ public:
 			, VoiceEliteWeaponAttacks {}
 
 			, InfantryAutoDeploy {}
+
+			, TurretResponse {}
 		{ }
 
 		void FireExtraWeapons(TechnoClass* pThis, AbstractClass* pTarget, int weaponIndex) const;
@@ -851,7 +855,7 @@ public:
 		virtual void LoadFromStream(PhobosStreamReader& Stm) override;
 		virtual void SaveToStream(PhobosStreamWriter& Stm) override;
 
-		void LoadFromINIByWhatAmI(INI_EX& exArtINI, const char* pArtSection);
+		void LoadFromINIByWhatAmI(INI_EX& exINI, const char* pSection, INI_EX& exArtINI, const char* pArtSection);
 
 		void ApplyTurretOffset(Matrix3D* mtx, double factor = 1.0);
 		void CalculateSpawnerRange();

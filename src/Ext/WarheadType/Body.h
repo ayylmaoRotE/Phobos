@@ -208,6 +208,10 @@ public:
 		Valueable<double> AffectsAbovePercent;
 		Valueable<bool> AffectsNeutral;
 
+		Valueable<bool> ReverseEngineer;
+
+		Valueable<bool> CanKill;
+
 		// Ares tags
 		// http://ares-developers.github.io/Ares-docs/new/warheads/general.html
 		Valueable<bool> AffectsEnemies;
@@ -439,6 +443,8 @@ public:
 			, KillWeapon_OnFirer_AffectsHouses { AffectedHouse::All }
 			, KillWeapon_Affects { AffectedTarget::All }
 			, KillWeapon_OnFirer_Affects { AffectedTarget::All }
+
+			, ReverseEngineer { false }
 		{ }
 
 		void ApplyConvert(HouseClass* pHouse, TechnoClass* pTarget);
@@ -483,6 +489,7 @@ public:
 		void ApplyAttachEffects(TechnoClass* pTarget, HouseClass* pInvokerHouse, TechnoClass* pInvoker);
 		void ApplyStealMoney(TechnoClass* pOwner, TechnoClass* pTarget) const;
 		void ApplyBuildingUndeploy(TechnoClass* pTarget);
+		void ApplyReverseEngineer(HouseClass* pHouse, TechnoClass* pTarget);
 		double GetCritChance(TechnoClass* pFirer) const;
 		
 		// Transact.cpp
