@@ -1,5 +1,6 @@
 #pragma once
 #include <Utilities/TemplateDef.h>
+#include <string>
 
 class TechnoTypeClass;
 
@@ -7,8 +8,9 @@ class GiftBoxData
 {
 public:
 	Valueable<bool> Enable { false };
-	ValueableVector<TechnoTypeClass*> Gifts { };
-	std::vector<int> Nums { };
+	// Keep these for serialization compatibility but never use them
+	ValueableVector<TechnoTypeClass*> Gifts { };  // Serialized but ignored
+	std::vector<int> Nums { };  // Serialized but ignored
 	ValueableVector<int> RandomWeights { };
 	ValueableVector<double> Chances { };
 	Valueable<bool> UseChancesAndWeight { false };
@@ -26,14 +28,16 @@ public:
 	Valueable<bool> CheckPathfind { false };
 
 	void Read(INI_EX& parser, const char* pSection);
+	void GetGiftsFromINI(const char* pSection, std::vector<TechnoTypeClass*>& outGifts, std::vector<int>& outNums);
 
 	template <typename T>
 	void Serialize(T& Stm)
 	{
+		// Serialize everything for compatibility, but ignore Gifts/Nums at runtime
 		Stm
 			.Process(Enable)
-			.Process(Gifts)
-			.Process(Nums)
+			.Process(Gifts)  // Serialized for compatibility but never used
+			.Process(Nums)   // Serialized for compatibility but never used
 			.Process(RandomWeights)
 			.Process(Chances)
 			.Process(UseChancesAndWeight)

@@ -249,9 +249,49 @@ void WarheadTypeExt::ExtData::ReloadAllHitAnimData(CCINIClass* pINI)
 					}
 				}
 			}
+			// Store IDs for this warhead after loading all its animations
+			pWHExt->StoreArmorHitAnimIDs();
 		}
 	}
 	Debug::Log("DEBUG: ReloadAllHitAnimData finished, loaded %d animations\n", totalLoaded);
+}
+
+void WarheadTypeExt::ExtData::StoreArmorHitAnimIDs()
+{
+	// Store animation IDs using parallel vectors for stable serialization
+	ArmorNames.clear();
+	AnimIDs.clear();
+	for (const auto& pair : ArmorHitAnim) {
+		const std::string& armorName = pair.first;
+		AnimTypeClass* pAnim = pair.second;
+		if (pAnim && pAnim->ID) {
+			ArmorNames.push_back(armorName);
+			AnimIDs.push_back(std::string(pAnim->ID));
+		}
+	}
+}
+
+void WarheadTypeExt::ExtData::ReconstructArmorHitAnimFromIDs()
+{
+	// Rebuild ArmorHitAnim map from parallel vectors after deserialization
+	ArmorHitAnim.clear();
+	
+	// Ensure both vectors have the same size
+	size_t count = std::min(ArmorNames.size(), AnimIDs.size());
+	for (size_t i = 0; i < count; ++i) {
+		const std::string& armorName = ArmorNames[i];
+		const std::string& animID = AnimIDs[i];
+		
+		if (!animID.empty()) {
+			auto pAnim = AnimTypeClass::Find(animID.c_str());
+			if (pAnim) {
+				ArmorHitAnim[armorName] = pAnim;
+				Debug::Log("HitAnim: Reconstructed %s -> %s\n", armorName.c_str(), animID.c_str());
+			} else {
+				Debug::Log("HitAnim: Failed to find animation '%s' for armor '%s'\n", animID.c_str(), armorName.c_str());
+			}
+		}
+	}
 }
 
 // =============================
@@ -577,6 +617,9 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 				pSection, armorName, animTemp.Get() ? animTemp.Get()->ID : "null");
 		}
 	}
+	
+	// Store IDs for stable serialization after INI reading
+	this->StoreArmorHitAnimIDs();
 }
 
 template <typename T>
@@ -776,11 +819,11 @@ void WarheadTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->Reflected)
 		.Process(this->DamageAreaTarget)
 
-		.Process(this->CanKill);
-
-	// Note: ArmorHitAnim map is not serialized due to complexity.
-	// It will be rebuilt from INI on load, which is acceptable since
-	// the data is static and doesn't change during gameplay.
+		.Process(this->CanKill)
+		
+		// Serialize stable parallel vectors instead of raw pointers
+		.Process(this->ArmorNames)
+		.Process(this->AnimIDs);
 }
 
 // Flag to ensure HitAnim data is only reloaded once per load operation
@@ -794,12 +837,8 @@ void WarheadTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
 	this->Serialize(Stm);
 	
 	// Reload HitAnim data after each warhead is loaded from save
-	if (!hasReloadedHitAnim)
-	{
-		Debug::Log("DEBUG: LoadFromStream reloading HitAnim data\n");
-		ExtData::ReloadAllHitAnimData(CCINIClass::INI_Rules);
-		hasReloadedHitAnim = true;
-	}
+	// Reconstruct ArmorHitAnim pointers from serialized IDs
+	this->ReconstructArmorHitAnimFromIDs();
 }
 
 void WarheadTypeExt::ExtData::SaveToStream(PhobosStreamWriter& Stm)

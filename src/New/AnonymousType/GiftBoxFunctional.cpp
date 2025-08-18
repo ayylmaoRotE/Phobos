@@ -19,8 +19,13 @@ static bool OpenDisallowed(TechnoClass* const pTechno)
 
 void GiftBoxFunctional::Init(TechnoExt::ExtData* pExt, TechnoTypeExt::ExtData* pTypeExt)
 {
-    Debug::Log("GiftBoxFunctional::Init called, Enable=%d\n", pTypeExt->MyGiftBoxData.Enable.Get());
-    if(!pTypeExt->MyGiftBoxData.Enable) { return; }
+    Debug::Log("GiftBoxFunctional::Init called, Enable=%d\n", 
+        pTypeExt->MyGiftBoxData.Enable.Get());
+    
+    // Simple check - if not enabled, nothing to do
+    if (!pTypeExt->MyGiftBoxData.Enable) {
+        return;
+    }
 
     const auto delay = (pTypeExt->MyGiftBoxData.DelayMax == 0)
         ? pTypeExt->MyGiftBoxData.Delay

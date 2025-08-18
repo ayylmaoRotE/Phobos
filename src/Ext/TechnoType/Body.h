@@ -844,6 +844,7 @@ public:
 		virtual ~ExtData() = default;
 		virtual void LoadFromINIFile(CCINIClass* pINI) override;
 		virtual void Initialize() override { }
+		virtual void CompleteInitialization();
 
 		virtual void InvalidatePointer(void* ptr, bool bRemoved) override { }
 

@@ -3,6 +3,7 @@
 // include this file whenever something is to be saved.
 
 #include "Savegame.h"
+#include <typeinfo>
 #include <optional>
 #include <vector>
 #include <map>
@@ -73,14 +74,25 @@ namespace Savegame
 		if (!Stm.Load(ptrOld))
 			return nullptr;
 
+		Debug::Log("RestoreObject<%s>: read ptrOld=0x%p, RegisterForChange=%d\n", typeid(T).name(), (void*)ptrOld, RegisterForChange ? 1 : 0);
+
 		if (ptrOld)
 		{
 			std::unique_ptr<T> ptrNew = ObjectFactory<T>()(Stm);
 
+			Debug::Log("RestoreObject<%s>: allocated ptrNew=0x%p\n", typeid(T).name(), (void*)ptrNew.get());
+
 			if (Savegame::ReadPhobosStream(Stm, *ptrNew, RegisterForChange))
 			{
+				Debug::Log("RestoreObject<%s>: ReadPhobosStream succeeded for ptrNew=0x%p, registering change ptrOld=0x%p->ptrNew=0x%p\n",
+					typeid(T).name(), (void*)ptrNew.get(), (void*)ptrOld, (void*)ptrNew.get());
+
 				PhobosSwizzle::RegisterChange(ptrOld, ptrNew.get());
 				return ptrNew.release();
+			}
+			else
+			{
+				Debug::Log("RestoreObject<%s>: ReadPhobosStream failed for ptrNew=0x%p\n", typeid(T).name(), (void*)ptrNew.get());
 			}
 		}
 
@@ -90,6 +102,8 @@ namespace Savegame
 	template <typename T>
 	bool PersistObject(PhobosStreamWriter& Stm, const T* pValue)
 	{
+		Debug::Log("PersistObject<%s>: presence=%d, pValue=0x%p\n", typeid(T).name(), pValue != nullptr ? 1 : 0, (void*)pValue);
+
 		if (!Savegame::WritePhobosStream(Stm, pValue))
 			return false;
 
@@ -313,13 +327,18 @@ namespace Savegame
 	{
 		bool ReadFromStream(PhobosStreamReader& Stm, std::unique_ptr<T>& Value, bool RegisterForChange) const
 		{
+			Debug::Log("PhobosStreamObject<std::unique_ptr>: ReadFromStream begin for type=%s\n", typeid(T).name());
 			Value.reset(RestoreObject<T>(Stm, RegisterForChange));
+			Debug::Log("PhobosStreamObject<std::unique_ptr>: ReadFromStream result Value=0x%p for type=%s\n", (void*)Value.get(), typeid(T).name());
 			return true;
 		}
 
 		bool WriteToStream(PhobosStreamWriter& Stm, const std::unique_ptr<T>& Value) const
 		{
-			return PersistObject(Stm, Value.get());
+			Debug::Log("PhobosStreamObject<std::unique_ptr>: WriteToStream begin for type=%s, Value=0x%p\n", typeid(T).name(), (void*)(Value ? Value.get() : nullptr));
+			auto ret = PersistObject(Stm, Value.get());
+			Debug::Log("PhobosStreamObject<std::unique_ptr>: WriteToStream end for type=%s, returned=%d\n", typeid(T).name(), ret ? 1 : 0);
+			return ret;
 		}
 	};
 

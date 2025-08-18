@@ -723,7 +723,22 @@ DEFINE_HOOK(0x679CAF, RulesData_LoadAfterTypeData, 0x5)
 
 DEFINE_HOOK(0x668F6A, RulesData_InitializeAfterAllLoaded, 0x5)
 {
+	Debug::Log("RulesData_InitializeAfterAllLoaded: Hook called, processing TechnoTypes\n");
 	RulesExt::Global()->InitializeAfterAllLoaded();
+	
+	// Complete initialization for all TechnoTypes now that everything is loaded
+	int processedCount = 0;
+	for (const auto& pTechnoType : TechnoTypeClass::Array)
+	{
+		if (auto pExt = TechnoTypeExt::ExtMap.Find(pTechnoType))
+		{
+			processedCount++;
+			Debug::Log("Processing TechnoType %s for CompleteInitialization\n", pTechnoType->ID);
+			pExt->CompleteInitialization();
+		}
+	}
+	
+	Debug::Log("RulesData_InitializeAfterAllLoaded: Processed %d TechnoTypes\n", processedCount);
 	return 0;
 }
 

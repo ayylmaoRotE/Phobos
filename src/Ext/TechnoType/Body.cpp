@@ -15,6 +15,7 @@
 #include <Ext/Techno/Body.h>
 #include <Ext/WeaponType/Body.h>
 #include <New/Type/InsigniaTypeClass.h>
+#include <New/AnonymousType/GiftBoxFunctional.h>
 
 #include <Utilities/GeneralUtils.h>
 
@@ -1745,12 +1746,17 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->BattlePoints)
 
 		.Process(this->InfantryAutoDeploy)
+		
+		.Process(this->MyGiftBoxData)
 		;
 }
 void TechnoTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
 {
 	Extension<TechnoTypeClass>::LoadFromStream(Stm);
 	this->Serialize(Stm);
+	
+	// Note: GiftBox pointer reconstruction now happens in CompleteInitialization
+	// after all TechnoTypes are loaded to avoid timing issues
 }
 
 void TechnoTypeExt::ExtData::SaveToStream(PhobosStreamWriter& Stm)
@@ -1847,4 +1853,9 @@ DEFINE_HOOK(0x747E90, UnitTypeClass_LoadFromINI, 0x5)
 	}
 
 	return 0;
+}
+
+void TechnoTypeExt::ExtData::CompleteInitialization()
+{
+	// No longer needed - GiftBox reconstructs from INI automatically when accessed
 }
