@@ -829,6 +829,7 @@ DEFINE_HOOK(0x4AE95E, DisplayClass_sub_4AE750_DisallowBuildingNonAttackPlanning,
 
 #pragma endregion
 
+
 DEFINE_HOOK(0x4400F9, BuildingClass_AI_UpdateOverpower, 0x6)
 {
 	enum { SkipGameCode = 0x44019D };
@@ -905,3 +906,14 @@ DEFINE_HOOK(0x4555E4, BuildingClass_IsPowerOnline_Overpower, 0x6)
 
 	return overPower < keepOnline ? LowPower : (R->Origin() == 0x4555E4 ? Continue1 : Continue2);
 }
+
+#pragma region AircraftFactory_RallyPoint
+
+bool FakeBuildingClass::_IsFactory() {
+	// Extended IsFactory logic: include AircraftType + original check
+	return this->Type->Factory == AbstractType::AircraftType || this->Type->Factory != AbstractType::None;
+}
+
+DEFINE_FUNCTION_JUMP(VTABLE, 0x7E4140, FakeBuildingClass::_IsFactory);
+
+#pragma endregion

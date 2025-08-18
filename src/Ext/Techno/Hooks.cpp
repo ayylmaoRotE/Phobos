@@ -19,6 +19,7 @@
 #include <Utilities/AresHelper.h>
 #include <Utilities/AresFunctions.h>
 #include <New/AnonymousType/GiftBoxFunctional.h>
+#include <Drawing.h>
 
 #pragma region GetTechnoType
 
@@ -1262,3 +1263,39 @@ DEFINE_HOOK(0x708FC0, TechnoClass_ResponseMove_Pickup, 0x5)
 
 	return 0;
 }
+
+#pragma region DebugDisplay
+
+// Debug display hook to show TechnoType names on battlefield
+// Based on Otamaa's TechnoClass_DrawIt_Add implementation
+// Hook address 0x6F5190 - after TechnoClass::DrawIt
+DEFINE_HOOK(0x6F5190, TechnoClass_DrawIt_ShowTechnoNames, 0x6)
+{
+	GET(TechnoClass*, pThis, ECX);
+	GET_STACK(Point2D*, pLocation, 0x4);
+	// GET_STACK(RectangleStruct*, pBound, 0x8); // Not needed for simple text display
+
+	if (!Phobos::DisplayTechnoNames)
+		return 0;
+
+	// Get TechnoType name
+	const char* technoTypeName = pThis->GetTechnoType()->ID;
+	
+	// Convert to wide string for display
+	wchar_t wideTypeName[256];
+	MultiByteToWideChar(CP_ACP, 0, technoTypeName, -1, wideTypeName, 256);
+
+	// Simple text above the unit
+	auto nPoint = *pLocation;
+	nPoint.Y -= 20; // Offset above the unit
+
+	// Get player color (convert to COLORREF)
+	COLORREF playerColor = Drawing::RGB_To_Int(pThis->Owner->Color);
+	
+	// Draw text only (no background)
+	DSurface::Composite->DrawText(wideTypeName, &nPoint, playerColor);
+
+	return 0;
+}
+
+#pragma endregion
