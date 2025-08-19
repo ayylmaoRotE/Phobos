@@ -751,7 +751,7 @@ DEFINE_HOOK(0x668F6A, RulesData_InitializeAfterAllLoaded, 0x5)
 		if (auto pExt = TechnoTypeExt::ExtMap.Find(pTechnoType))
 		{
 			processedCount++;
-			Debug::Log("Processing TechnoType %s for CompleteInitialization\n", pTechnoType->ID);
+			// Debug::Log("Processing TechnoType %s for CompleteInitialization\n", pTechnoType->ID);
 			pExt->CompleteInitialization();
 		}
 	}

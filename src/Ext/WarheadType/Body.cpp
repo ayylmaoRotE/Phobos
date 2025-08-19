@@ -244,7 +244,7 @@ void WarheadTypeExt::ExtData::ReloadAllHitAnimData(CCINIClass* pINI)
 					if (auto pAnimType = AnimTypeClass::FindOrAllocate(tempBuffer))
 					{
 						pWHExt->ArmorHitAnim[armorName] = pAnimType;
-						Debug::Log("DEBUG: Loaded %s HitAnim.%s=%s\n", pSection, armorName, tempBuffer);
+						// Debug::Log("DEBUG: Loaded %s HitAnim.%s=%s\n", pSection, armorName, tempBuffer);
 						totalLoaded++;
 					}
 				}
@@ -616,8 +616,8 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 		if (animTemp.isset())
 		{
 			this->ArmorHitAnim[armorName] = animTemp.Get();
-			Debug::Log("DEBUG HitAnim: Warhead %s loaded HitAnim.%s=%s\n", 
-				pSection, armorName, animTemp.Get() ? animTemp.Get()->ID : "null");
+			// Debug::Log("DEBUG HitAnim: Warhead %s loaded HitAnim.%s=%s\n", 
+			//	pSection, armorName, animTemp.Get() ? animTemp.Get()->ID : "null");
 		}
 	}
 	

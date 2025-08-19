@@ -9,6 +9,9 @@
 #include <MapClass.h>
 #include <RulesClass.h>
 
+// Disable GiftBox debug logging
+#define GIFTBOX_DEBUG_ENABLED false
+
 // ===== Helpers replicated from Otamaa's approach =====
 static inline bool BingoChance(double chance) {
     if (chance <= 0.0) { return false; }
@@ -214,7 +217,9 @@ void GiftBox::Release(TechnoClass* pOwner, GiftBoxData& nData)
     auto pHouse = pOwner->GetOwningHouse();
     auto location = pOwner->GetCoords();
 
-    Debug::Log("GiftBox::Release called for %s at %d,%d,%d\n", pOwner->GetTechnoType()->ID, location.X, location.Y, location.Z);
+    if (GIFTBOX_DEBUG_ENABLED) {
+        Debug::Log("GiftBox::Release called for %s at %d,%d,%d\n", pOwner->GetTechnoType()->ID, location.X, location.Y, location.Z);
+    }
 
     // inherit destination/target from owner
     AbstractClass* pDest = nullptr;
@@ -229,7 +234,9 @@ void GiftBox::Release(TechnoClass* pOwner, GiftBoxData& nData)
     std::vector<TechnoTypeClass*> gifts;
     const char* pSection = pOwner->GetTechnoType()->ID;
     GetGifts(nData, gifts, pSection);
-    Debug::Log("GiftBox: GetGifts returned %d gifts\n", (int)gifts.size());
+    if (GIFTBOX_DEBUG_ENABLED) {
+        Debug::Log("GiftBox: GetGifts returned %d gifts\n", (int)gifts.size());
+    }
 
     for (auto* pTech : gifts) {
         if(!pTech || !pHouse) { 
@@ -249,7 +256,9 @@ void GiftBox::Release(TechnoClass* pOwner, GiftBoxData& nData)
             continue; 
         }
 
-        Debug::Log("GiftBox: Creating gift %s\n", pTech->ID);
+        if (GIFTBOX_DEBUG_ENABLED) {
+            Debug::Log("GiftBox: Creating gift %s\n", pTech->ID);
+        }
         TechnoClass* pGift = CreateTechno(pTech, pHouse);
         if(!pGift) { 
             Debug::Log("GiftBox: Failed to create gift %s\n", pTech->ID);
@@ -267,7 +276,9 @@ void GiftBox::Release(TechnoClass* pOwner, GiftBoxData& nData)
             pGift->UnInit();
             continue;
         }
-        Debug::Log("GiftBox: Successfully placed gift %s\n", pTech->ID);
+        if (GIFTBOX_DEBUG_ENABLED) {
+            Debug::Log("GiftBox: Successfully placed gift %s\n", pTech->ID);
+        }
 
         // house bookkeeping
         if (auto own = pGift->GetOwningHouse()) {

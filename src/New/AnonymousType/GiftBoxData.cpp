@@ -4,6 +4,9 @@
 #include <Phobos.h>
 #include <RulesClass.h>
 
+// Disable GiftBox debug logging
+#define GIFTBOX_DEBUG_ENABLED false
+
 void GiftBoxData::Read(INI_EX& parser, const char* pSection)
 {
 	// Check if GiftBox.Types exists to set Enable flag
@@ -39,7 +42,9 @@ void GiftBoxData::Read(INI_EX& parser, const char* pSection)
 
 void GiftBoxData::GetGiftsFromINI(const char* pSection, std::vector<TechnoTypeClass*>& outGifts, std::vector<int>& outNums)
 {
-	Debug::Log("GiftBox: GetGiftsFromINI called for section %s\n", pSection);
+	if (GIFTBOX_DEBUG_ENABLED) {
+		Debug::Log("GiftBox: GetGiftsFromINI called for section %s\n", pSection);
+	}
 	
 	outGifts.clear();
 	outNums.clear();
@@ -74,9 +79,13 @@ void GiftBoxData::GetGiftsFromINI(const char* pSection, std::vector<TechnoTypeCl
 				}
 			}
 			
-			Debug::Log("GiftBox: Loaded %zu gifts from INI for section %s\n", outGifts.size(), pSection);
+			if (GIFTBOX_DEBUG_ENABLED) {
+				Debug::Log("GiftBox: Loaded %zu gifts from INI for section %s\n", outGifts.size(), pSection);
+			}
 		} else {
-			Debug::Log("GiftBox: No gifts found in INI for section %s\n", pSection);
+			if (GIFTBOX_DEBUG_ENABLED) {
+				Debug::Log("GiftBox: No gifts found in INI for section %s\n", pSection);
+			}
 		}
 	}
 }
