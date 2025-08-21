@@ -266,7 +266,6 @@ void BuildingTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->ZShapePointMove_OnBuildup.Read(exArtINI, pArtSection, "ZShapePointMove.OnBuildup");
 
 	// SpeedBonus
-	this->SpeedBonus.Read(exINI, pSection);
 }
 
 void BuildingTypeExt::ExtData::CompleteInitialization()
@@ -343,7 +342,6 @@ void BuildingTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->BattlePointsCollector)
 		.Process(this->CommanderPointsCollector)
 		.Process(this->HasPowerUpAnim)
-		.Process(this->SpeedBonus)
 		;
 }
 
@@ -405,135 +403,6 @@ DEFINE_HOOK(0x45E707, BuildingTypeClass_DTOR, 0x6)
 	return 0;
 }
 
-double BuildingTypeExt::ExtData::GetExternalFactorySpeedBonus(TechnoClass* pWhat, HouseClass* pOwner)
-{
-	double fFactor = 1.0;
-
-	if (!pWhat || !pOwner || pOwner->Defeated || pOwner->IsNeutral())
-		return fFactor;
-
-	const auto pType = pWhat->GetTechnoType();
-	if (!pType)
-		return fFactor;
-
-	auto pHouseExt = HouseExt::ExtMap.Find(pOwner);
-	if (pHouseExt->Building_BuildSpeedBonusCounter.empty())
-		return fFactor;
-
-	const auto what = pType->WhatAmI();
-
-	for (const auto& [pBuildingType, nCount] : pHouseExt->Building_BuildSpeedBonusCounter)
-	{
-		if (nCount <= 0)
-			continue;
-
-		auto pTypeExt = BuildingTypeExt::ExtMap.Find(pBuildingType);
-		if (!pTypeExt->SpeedBonus.Enabled)
-			continue;
-
-		double nBonus = 0.000;
-
-		switch (what)
-		{
-		case AbstractType::Aircraft:
-			nBonus = pTypeExt->SpeedBonus.SpeedBonus_Aircraft;
-			break;
-		case AbstractType::Building:
-			nBonus = pTypeExt->SpeedBonus.SpeedBonus_Building;
-			break;
-		case AbstractType::Infantry:
-			nBonus = pTypeExt->SpeedBonus.SpeedBonus_Infantry;
-			break;
-		case AbstractType::Unit:
-			nBonus = pTypeExt->SpeedBonus.SpeedBonus_Unit;
-			break;
-		default:
-			continue;
-		}
-
-		if (nBonus == 0.000)
-			continue;
-
-		if (!pTypeExt->SpeedBonus.AffectedType.empty())
-		{
-			bool bAffects = pTypeExt->SpeedBonus.AffectedType.Contains(pType);
-			if (!bAffects)
-				continue;
-		}
-
-		if (nBonus == 0.000)
-			continue;
-
-		fFactor *= std::pow(nBonus, nCount);
-	}
-
-	return fFactor;
-}
-
-double BuildingTypeExt::ExtData::GetExternalFactorySpeedBonus(TechnoTypeClass* pWhat, HouseClass* pOwner)
-{
-	double fFactor = 1.0;
-	if (!pWhat || !pOwner || pOwner->Defeated || pOwner->IsNeutral())
-		return fFactor;
-
-	auto pHouseExt = HouseExt::ExtMap.Find(pOwner);
-	if (pHouseExt->Building_BuildSpeedBonusCounter.empty())
-		return fFactor;
-
-	const auto what = pWhat->WhatAmI();
-
-	for (const auto& [pBuildingType, nCount] : pHouseExt->Building_BuildSpeedBonusCounter)
-	{
-		if (nCount <= 0)
-			continue;
-
-		auto pTypeExt = BuildingTypeExt::ExtMap.Find(pBuildingType);
-		if (!pTypeExt->SpeedBonus.Enabled)
-			continue;
-
-		double nBonus = 0.000;
-
-		switch (what)
-		{
-		case AbstractType::Aircraft:
-			nBonus = pTypeExt->SpeedBonus.SpeedBonus_Aircraft;
-			break;
-		case AbstractType::Building:
-			nBonus = pTypeExt->SpeedBonus.SpeedBonus_Building;
-			break;
-		case AbstractType::Infantry:
-			nBonus = pTypeExt->SpeedBonus.SpeedBonus_Infantry;
-			break;
-		case AbstractType::Unit:
-			nBonus = pTypeExt->SpeedBonus.SpeedBonus_Unit;
-			break;
-		default:
-			continue;
-		}
-
-		if (nBonus == 0.000)
-			continue;
-
-		if (!pTypeExt->SpeedBonus.AffectedType.empty())
-		{
-			bool bAffects = pTypeExt->SpeedBonus.AffectedType.Contains(pWhat);
-			if (!bAffects)
-				continue;
-		}
-
-		if (nBonus == 0.000)
-			continue;
-
-		fFactor *= std::pow(nBonus, nCount);
-	}
-
-	return fFactor;
-}
-
-double BuildingTypeExt::ExtData::GetExternalFactorySpeedBonus(TechnoClass* pWhat)
-{
-	return BuildingTypeExt::ExtData::GetExternalFactorySpeedBonus(pWhat, pWhat->GetOwningHouse());
-}
 
 DEFINE_HOOK_AGAIN(0x465300, BuildingTypeClass_SaveLoad_Prefix, 0x5)
 DEFINE_HOOK(0x465010, BuildingTypeClass_SaveLoad_Prefix, 0x5)

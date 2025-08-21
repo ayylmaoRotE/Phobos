@@ -15,7 +15,6 @@ DEFINE_HOOK(0x508C30, HouseClass_UpdatePower_UpdateCounter, 0x5)
 	auto const pHouseExt = HouseExt::ExtMap.Find(pThis);
 
 	pHouseExt->PowerPlantEnhancers.clear();
-	pHouseExt->Building_BuildSpeedBonusCounter.clear();
 
 	// This pre-iterating ensure our process to be done in O(NM) instead of O(N^2),
 	// as M should be much less than N, this will be a great improvement. - secsome
@@ -32,11 +31,6 @@ DEFINE_HOOK(0x508C30, HouseClass_UpdatePower_UpdateCounter, 0x5)
 				++pHouseExt->PowerPlantEnhancers[pType->ArrayIndex];
 			}
 
-			// Count BuildSpeedBonus buildings
-			if (pExt->SpeedBonus.Enabled)
-			{
-				++pHouseExt->Building_BuildSpeedBonusCounter[pType];
-			}
 		}
 	}
 

@@ -42,7 +42,6 @@
     <ClCompile Include="src\Ext\Unit\Hooks.Sinking.cpp" />
     <ClCompile Include="src\Misc\Hooks.AlphaImage.cpp" />
     <ClCompile Include="src\New\Entity\AttachEffectClass.cpp" />
-    <ClCompile Include="src\New\AnonymousType\BuildSpeedBonus.cpp" />
     <ClCompile Include="src\New\AnonymousType\GiftBox.cpp" />
     <ClCompile Include="src\New\AnonymousType\GiftBoxData.cpp" />
     <ClCompile Include="src\New\AnonymousType\GiftBoxFunctional.cpp" />
@@ -123,7 +122,6 @@
     <ClCompile Include="src\Ext\Building\Hooks.Grinding.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.Refinery.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.Production.cpp" />
-    <ClCompile Include="src\Ext\Building\Hooks.FactorySpeedBonus.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.Selling.cpp" />
     <ClCompile Include="src\Ext\BulletType\Body.cpp" />
     <ClCompile Include="src\Ext\Bullet\Body.cpp" />
@@ -235,7 +233,6 @@
     <ClInclude Include="src\Ext\Sidebar\SWSidebar\ToggleSWButtonClass.h" />
     <ClInclude Include="src\Ext\HouseType\Body.h" />
     <ClInclude Include="src\New\Entity\AttachEffectClass.h" />
-    <ClInclude Include="src\New\AnonymousType\BuildSpeedBonus.h" />
     <ClInclude Include="src\New\AnonymousType\GiftBox.h" />
     <ClInclude Include="src\New\AnonymousType\GiftBoxData.h" />
     <ClInclude Include="src\New\AnonymousType\GiftBoxFunctional.h" />
