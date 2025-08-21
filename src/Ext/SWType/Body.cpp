@@ -100,6 +100,9 @@ void SWTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->EVA_LinkedSWAcquired)
 		.Process(this->BattlePoints_Amount)
 		.Process(this->CommanderPoints_Amount)
+		.Process(this->SidebarGClockImage)
+		.Process(this->SidebarGClockTranslucent)
+		.Process(this->SidebarGClockTranslucentLevel)
 		;
 }
 
@@ -287,6 +290,10 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 
 	this->BattlePoints_Amount.Read(exINI, pSection, "BattlePoints.Amount");
 	this->CommanderPoints_Amount.Read(exINI, pSection, "CommanderPoints.Amount");
+
+	this->SidebarGClockImage.Read(pINI, pSection, "SidebarGClock.Image");
+	this->SidebarGClockTranslucent.Read(exINI, pSection, "SidebarGClock.Translucent");
+	this->SidebarGClockTranslucentLevel.Read(exINI, pSection, "SidebarGClock.TranslucentLevel");
 }
 
 void SWTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
