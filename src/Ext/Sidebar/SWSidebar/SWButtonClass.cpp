@@ -8,6 +8,7 @@
 #include <Ext/SWType/Body.h>
 #include <Ext/House/Body.h>
 #include <Utilities/AresFunctions.h>
+#include <unordered_map>
 
 SWButtonClass::SWButtonClass(int superIdx, int x, int y, int width, int height)
 	: GadgetClass(x, y, width, height, (GadgetFlag::LeftPress | GadgetFlag::RightPress), false)
@@ -170,12 +171,21 @@ bool SWButtonClass::Draw(bool forced)
 		BlitterFlags blitterFlags = BlitterFlags::bf_400;
 		SHPStruct* pGClockSHP = FileSystem::GCLOCK2_SHP;
 		
-		// Use custom gclock image if specified
+		// Use custom gclock image if specified with caching to prevent excessive file loads
 		if (pSWExt->SidebarGClockImage.data()[0] != '\0')
 		{
-			auto pCustomGClock = FileSystem::LoadSHPFile(pSWExt->SidebarGClockImage.data());
-			if (pCustomGClock)
-				pGClockSHP = pCustomGClock;
+			static std::unordered_map<std::string, SHPStruct*> gclockCache;
+			const std::string filename = pSWExt->SidebarGClockImage.data();
+			
+			auto it = gclockCache.find(filename);
+			if (it == gclockCache.end())
+			{
+				auto pCustomGClock = FileSystem::LoadSHPFile(filename.c_str());
+				it = gclockCache.emplace(filename, pCustomGClock).first;
+			}
+			
+			if (it->second)
+				pGClockSHP = it->second;
 		}
 		
 		// Apply custom translucency settings
