@@ -30,15 +30,21 @@ static __forceinline int GetDelay_Fast(AircraftClass* pThis, bool isLastShot)
 	if (!pWeaponType) return 60; // safe fallback
 	
 	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeaponType);
-	const int burstDelay = pWeaponExt->GetBurstDelay(pThis->CurrentBurstIndex);
+	int delay = pWeaponType->ROF;
 	
-	if (isLastShot)
+	if (isLastShot || pExt->Strafe_BombsDroppedThisRound == pWeaponExt->Strafing_Shots.Get(5) || (pWeaponExt->Strafing_UseAmmoPerShot && !pThis->Ammo))
 	{
-		// 🔧 Optimized: Use cached weapon for ROF calculation
-		return pWeaponType->ROF;
+		// Critical: Set mission status to fly away and calculate proper end delay
+		pThis->MissionStatus = (int)AirAttackStatus::FlyToPosition;
+		delay = pWeaponExt->Strafing_EndDelay.Get((pWeaponType->Range + (Unsorted::LeptonsPerCell * 4)) / pThis->Type->Speed);
+	}
+	else
+	{
+		// Use burst delay for shots within the strafe run
+		delay = pWeaponExt->GetBurstDelay(pThis->CurrentBurstIndex);
 	}
 	
-	return burstDelay;
+	return delay;
 }
 
 
