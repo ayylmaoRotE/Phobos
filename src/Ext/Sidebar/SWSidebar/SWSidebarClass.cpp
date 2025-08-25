@@ -461,41 +461,48 @@ DEFINE_HOOK(0x4F92FB, HouseClass_UpdateTechTree_SWSidebar, 0x7)
 		SWSidebarClass::RecheckCameo();
 		
 		// Also recheck main sidebar for SW.AuxTechnos.Required cameos that might need to be re-added
-		auto pSidebar = &SidebarClass::Instance;
-		for (int i = 0; i < pHouse->Supers.Count; i++)
+		// Only run if RecheckTechTree flag was set (avoids unnecessary work)
+		if (pHouse->RecheckTechTree)
 		{
-			if (auto pSuper = pHouse->Supers.GetItem(i))
+			auto pSidebar = &SidebarClass::Instance;
+			const int superCount = pHouse->Supers.Count;
+			
+			for (int i = 0; i < superCount; i++)
 			{
-				if (pSuper->IsPresent)
+				auto pSuper = pHouse->Supers.GetItem(i);
+				if (!pSuper || !pSuper->IsPresent) continue;
+				
+				auto pSWExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+				if (!pSWExt || !pSWExt->SW_AuxTechnos_Required) continue;
+				
+				// Fast availability check first (most likely to fail)
+				if (!pSWExt->IsAvailable(pHouse)) continue;
+				
+				// Check if already in main sidebar (cache-friendly single pass)
+				bool inMainSidebar = false;
+				for (int tab = 0; tab < 4; tab++)
 				{
-					if (auto pSWExt = SWTypeExt::ExtMap.Find(pSuper->Type))
+					auto& strip = pSidebar->Tabs[tab];
+					const int cameoCount = strip.CameoCount;
+					auto* cameos = strip.Cameos;
+					
+					for (int btn = 0; btn < cameoCount; btn++)
 					{
-						// Check if this SW has AuxTechnos requirement and is now available
-						if (pSWExt->SW_AuxTechnos_Required && pSWExt->IsAvailable(pHouse))
+						if (cameos[btn].ItemType == AbstractType::Special && cameos[btn].ItemIndex == i)
 						{
-							// Check if it's not already in main sidebar and not in SWSidebar
-							bool inMainSidebar = false;
-							for (int tab = 0; tab < 4 && !inMainSidebar; tab++)
-							{
-								auto& strip = pSidebar->Tabs[tab];
-								for (int btn = 0; btn < strip.CameoCount && !inMainSidebar; btn++)
-								{
-									auto& cameo = strip.Cameos[btn];
-									if (cameo.ItemType == AbstractType::Special && cameo.ItemIndex == i)
-									{
-										inMainSidebar = true;
-									}
-								}
-							}
-							
-							// If not in main sidebar and not successfully added to SWSidebar, try to add to main sidebar
-							if (!inMainSidebar && !SWSidebarClass::Instance.AddButton(i))
-							{
-								pSidebar->AddCameo(AbstractType::Special, i);
-							}
+							inMainSidebar = true;
+							goto next_super; // Break out of nested loops
 						}
 					}
 				}
+				
+				// Only try adding if not found and SWSidebar rejected it
+				if (!SWSidebarClass::Instance.AddButton(i))
+				{
+					pSidebar->AddCameo(AbstractType::Special, i);
+				}
+				
+				next_super:;
 			}
 		}
 	}
