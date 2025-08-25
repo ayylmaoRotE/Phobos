@@ -129,9 +129,18 @@ DEFINE_HOOK(0x6F36DB, TechnoClass_WhatWeaponShouldIUse, 0x8)
 
 	const auto pTargetTechno = abstract_cast<TechnoClass*>(pTarget);
 	const auto pTypeExt = TechnoExt::ExtMap.Find(pThis)->TypeExtData;
+
+	// 🔧 Optimized: Precompute policy flags once (avoid re-evaluating later)
 	const bool allowFallback = !pTypeExt->NoSecondaryWeaponFallback;
-	const bool allowAAFallback = allowFallback ? true : pTypeExt->NoSecondaryWeaponFallback_AllowAA;
-	const int weaponIndex = TechnoExt::PickWeaponIndex(pThis, pTargetTechno, pTarget, 0, 1, allowFallback, allowAAFallback);
+	const bool allowAAFallback = allowFallback || pTypeExt->NoSecondaryWeaponFallback_AllowAA;
+
+	// 🔧 Optimized: Hot-cache weapon pointers once; used in shield & AA checks below
+	WeaponTypeClass* const primaryWT = pThis->GetWeapon(0)->WeaponType;
+	WeaponTypeClass* const secondaryWT = pThis->GetWeapon(1)->WeaponType;
+
+	// Keep the original, deterministic pick call
+	const int weaponIndex = TechnoExt::PickWeaponIndex(
+		pThis, pTargetTechno, pTarget, 0, 1, allowFallback, allowAAFallback);
 
 	if (weaponIndex != -1)
 		return weaponIndex == 1 ? Secondary : Primary;
@@ -145,12 +154,12 @@ DEFINE_HOOK(0x6F36DB, TechnoClass_WhatWeaponShouldIUse, 0x8)
 	{
 		if (pShield->IsActive())
 		{
-			const auto secondary = pThis->GetWeapon(1)->WeaponType;
-			const bool secondaryIsAA = pTargetTechno && pTargetTechno->IsInAir() && secondary && secondary->Projectile->AA;
+			// 🔧 Optimized: Only compute secondary AA when needed and only once
+			const bool secondaryIsAA = (secondaryWT && pTargetTechno->IsInAir() && secondaryWT->Projectile->AA);
 
-			if (secondary && (allowFallback || (allowAAFallback && secondaryIsAA) || TechnoExt::CanFireNoAmmoWeapon(pThis, 1)))
+			if (secondaryWT && (allowFallback || (allowAAFallback && secondaryIsAA) || TechnoExt::CanFireNoAmmoWeapon(pThis, 1)))
 			{
-				if (!pShield->CanBeTargeted(pThis->GetWeapon(0)->WeaponType))
+				if (!pShield->CanBeTargeted(primaryWT))
 					return Secondary;
 			}
 			else
@@ -168,10 +177,14 @@ DEFINE_HOOK(0x6F37EB, TechnoClass_WhatWeaponShouldIUse_AntiAir, 0x6)
 	enum { Primary = 0x6F37AD, Secondary = 0x6F3807 };
 
 	GET_STACK(AbstractClass*, pTarget, STACK_OFFSET(0x18, 0x4));
-	GET_STACK(WeaponTypeClass*, pWeapon, STACK_OFFSET(0x18, -0x4));
-	GET(WeaponTypeClass*, pSecWeapon, EAX);
+	GET_STACK(WeaponTypeClass*, pWeapon, STACK_OFFSET(0x18, -0x4)); // primary
+	GET(WeaponTypeClass*, pSecWeapon, EAX);                     // secondary
 
-	if (!pWeapon->Projectile->AA && pSecWeapon->Projectile->AA)
+	// 🔧 Optimized: Guard projectiles; keep logic identical when pointers are valid
+	const bool primaryAA = (pWeapon && pWeapon->Projectile && pWeapon->Projectile->AA);
+	const bool secondaryAA = (pSecWeapon && pSecWeapon->Projectile && pSecWeapon->Projectile->AA);
+
+	if (!primaryAA && secondaryAA)
 	{
 		const auto pTargetTechno = abstract_cast<TechnoClass*>(pTarget);
 
@@ -270,32 +283,47 @@ DEFINE_HOOK(0x6FC339, TechnoClass_CanFire, 0x6)
 	GET(TechnoClass*, pThis, ESI);
 	GET(WeaponTypeClass*, pWeapon, EDI);
 	GET_STACK(AbstractClass*, pTarget, STACK_OFFSET(0x20, 0x4));
-	GET(TechnoClass*, pTargetTechno, EBP);
 
-	// Checking for nullptr is not required here, since the game has already executed them before calling the hook  -- Belonit
-	const auto pWH = pWeapon->Warhead;
-	const auto pWHExt = WarheadTypeExt::ExtMap.Find(pWH);
-	const int nMoney = pWHExt->TransactMoney;
+	//  derive from pTarget (RTTI-checked), not from EBP
+	TechnoClass* const pTargetTechno = abstract_cast<TechnoClass*>(pTarget);
 
-	if (nMoney < 0 && pThis->Owner->Available_Money() < -nMoney)
+	// 🔧 Optimized: cache hot pointers once (null-safe)
+	auto* const pType = pThis->GetTechnoType();
+	auto* const pProj = pWeapon ? pWeapon->Projectile : nullptr;
+	auto* const pWH = pWeapon ? pWeapon->Warhead : nullptr;
+	if (!pWH)
+	{
+		// no warhead → cannot evaluate gates reliably; match vanilla's conservative fail
+		return CannotFire;
+	}
+
+	auto* const pWHExt = WarheadTypeExt::ExtMap.Find(pWH);
+	auto* const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
+
+	//  TransactMoney gate (unchanged semantics)
+	const int trans = pWHExt->TransactMoney;
+
+	if (trans < 0 && pThis->Owner->Available_Money() < -trans)
 		return CannotFire;
 
-	// AAOnly doesn't need to be checked if LandTargeting=1.
-	if (pThis->GetTechnoType()->LandTargeting != LandTargetingType::Land_Not_OK && pWeapon->Projectile->AA
-		&& pTarget && !pTarget->IsInAir() && BulletTypeExt::ExtMap.Find(pWeapon->Projectile)->AAOnly)
+	//  AAOnly gate (skip when LandTargeting == Land_Not_OK), null-safe
+	const bool targetInAir = (pTargetTechno && pTargetTechno->IsInAir());
+	if (pType->LandTargeting != LandTargetingType::Land_Not_OK
+		&& pProj && pProj->AA
+		&& pTarget && !targetInAir
+		&& BulletTypeExt::ExtMap.Find(pProj)->AAOnly)
 	{
 		return CannotFire;
 	}
 
+	// 🗺 Optimized: derive target cell once (keep your "ignore air techno cell" rule)
 	CellClass* pTargetCell = nullptr;
-
 	if (pTarget)
 	{
-		if (const auto pObject = abstract_cast<ObjectClass*, true>(pTarget))
+		if (const auto pObj = abstract_cast<ObjectClass*, true>(pTarget))
 		{
-			// Ignore target cell for technos that are in air.
-			if ((pTargetTechno && !pTargetTechno->IsInAir()) || pObject != pTargetTechno)
-				pTargetCell = pObject->GetCell();
+			if ((pTargetTechno && !pTargetTechno->IsInAir()) || pObj != pTargetTechno)
+				pTargetCell = pObj->GetCell();
 		}
 		else if (const auto pCell = abstract_cast<CellClass*, true>(pTarget))
 		{
@@ -303,9 +331,9 @@ DEFINE_HOOK(0x6FC339, TechnoClass_CanFire, 0x6)
 		}
 	}
 
-	const auto pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
-
-	if (!pWeaponExt->SkipWeaponPicking && pTargetCell && !EnumFunctions::IsCellEligible(pTargetCell, pWeaponExt->CanTarget, true, true))
+	//  cell-level CanTarget filter (kept)
+	if (!pWeaponExt->SkipWeaponPicking && pTargetCell
+		&& !EnumFunctions::IsCellEligible(pTargetCell, pWeaponExt->CanTarget, true, true))
 		return CannotFire;
 
 	if (pTargetTechno)

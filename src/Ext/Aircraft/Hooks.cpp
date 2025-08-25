@@ -1,6 +1,7 @@
 #include <AircraftClass.h>
 #include <EventClass.h>
 #include <FlyLocomotionClass.h>
+#include <unordered_map>
 
 #include <Ext/Aircraft/Body.h>
 #include <Ext/Techno/Body.h>
@@ -8,6 +9,38 @@
 #include <Ext/WeaponType/Body.h>
 #include <Ext/BulletType/Body.h>
 #include <Utilities/Macro.h>
+
+// 🔫 Optimized weapon delay calculation with caching to avoid repeated SelectWeapon calls
+static __forceinline int GetDelay_Fast(AircraftClass* pThis, bool isLastShot)
+{
+	auto const pExt = TechnoExt::ExtMap.Find(pThis);
+	
+	// Cache weapon index to avoid repeated SelectWeapon calls
+	int weaponIndex = pExt->CurrentAircraftWeaponIndex;
+	if (weaponIndex < 0)
+	{
+		weaponIndex = pThis->SelectWeapon(pThis->Target);
+		pExt->CurrentAircraftWeaponIndex = weaponIndex;
+	}
+	
+	auto const pWeapon = pThis->GetWeapon(weaponIndex);
+	if (!pWeapon) return 60; // safe fallback
+	
+	auto const pWeaponType = pWeapon->WeaponType;
+	if (!pWeaponType) return 60; // safe fallback
+	
+	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeaponType);
+	const int burstDelay = pWeaponExt->GetBurstDelay(pThis->CurrentBurstIndex);
+	
+	if (isLastShot)
+	{
+		// 🔧 Optimized: Use cached weapon for ROF calculation
+		return pWeaponType->ROF;
+	}
+	
+	return burstDelay;
+}
+
 
 #pragma region Mission_Attack
 
@@ -89,7 +122,16 @@ long __stdcall AircraftClass_IFlyControl_IsStrafe(IFlyControl const* ifly)
 	if (pExt->CurrentAircraftWeaponIndex >= 0)
 		pWeapon = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex)->WeaponType;
 	else if (pThis->Target)
-		pWeapon = pThis->GetWeapon(pThis->SelectWeapon(pThis->Target))->WeaponType;
+	{
+		// 🔫 Optimized: Use cached weapon index instead of repeated SelectWeapon calls
+		int weaponIndex = pExt->CurrentAircraftWeaponIndex;
+		if (weaponIndex < 0)
+		{
+			weaponIndex = pThis->SelectWeapon(pThis->Target);
+			pExt->CurrentAircraftWeaponIndex = weaponIndex;
+		}
+		pWeapon = pThis->GetWeapon(weaponIndex)->WeaponType;
+	}
 	else if (pExt->LastWeaponType)
 		pWeapon = pExt->LastWeaponType;
 	else
@@ -167,19 +209,8 @@ DEFINE_HOOK(0x418B1F, AircraftClass_Mission_Attack_FireAtTarget5Strafe_BurstFix,
 
 static int GetDelay(AircraftClass* pThis, bool isLastShot)
 {
-	auto const pExt = TechnoExt::ExtMap.Find(pThis);
-	const int weaponIndex = pExt->CurrentAircraftWeaponIndex >= 0 ? pExt->CurrentAircraftWeaponIndex : pThis->SelectWeapon(pThis->Target);
-	auto const pWeapon = pThis->GetWeapon(weaponIndex)->WeaponType;
-	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
-	int delay = pWeapon->ROF;
-
-	if (isLastShot || pExt->Strafe_BombsDroppedThisRound == pWeaponExt->Strafing_Shots.Get(5) || (pWeaponExt->Strafing_UseAmmoPerShot && !pThis->Ammo))
-	{
-		pThis->MissionStatus = (int)AirAttackStatus::FlyToPosition;
-		delay = pWeaponExt->Strafing_EndDelay.Get((pWeapon->Range + (Unsorted::LeptonsPerCell * 4)) / pThis->Type->Speed);
-	}
-
-	return delay;
+	// 🔫 Optimized: Use GetDelay_Fast for better performance with weapon caching
+	return GetDelay_Fast(pThis, isLastShot);
 }
 
 DEFINE_HOOK(0x4184CC, AircraftClass_Mission_Attack_Delay1A, 0x6)

@@ -7,6 +7,26 @@
 #include <Ext/WarheadType/Body.h>
 #include <Misc/SyncLogging.h>
 
+// stable, single-pass erase of the first matching pointer; preserves order
+template<typename T>
+static __forceinline void stable_erase_first(std::vector<T*>& v, T* value)
+{
+	for (size_t i = 0, n = v.size(); i < n; ++i)
+	{
+		if (v[i] == value) { v.erase(v.begin() + i); return; }
+	}
+}
+
+// swap-to-back erase for better performance when order doesn't matter
+template<typename T>
+static __forceinline void swap_erase_ptr(std::vector<T*>& v, T* value)
+{
+	for (size_t i = 0, n = v.size(); i < n; ++i)
+	{
+		if (v[i] == value) { if (i + 1 != n) std::swap(v[i], v[n - 1]); v.pop_back(); return; }
+	}
+}
+
 AnimExt::ExtContainer AnimExt::ExtMap;
 std::vector<AnimClass*> AnimExt::AnimsWithAttachedParticles;
 
@@ -61,7 +81,7 @@ void AnimExt::ExtData::DeleteAttachedSystem()
 		this->AttachedSystem = nullptr;
 
 		auto& vec = AnimExt::AnimsWithAttachedParticles;
-		vec.erase(std::remove(vec.begin(), vec.end(), this->OwnerObject()), vec.end());
+		stable_erase_first(vec, this->OwnerObject()); // Performance optimization: was erase(remove(...))
 	}
 }
 
@@ -489,22 +509,42 @@ void AnimExt::InvalidateTechnoPointers(TechnoClass* pTechno)
 	}
 }
 
-void AnimExt::InvalidateParticleSystemPointers(ParticleSystemClass* pParticleSystem)
+void AnimExt::InvalidateParticleSystemPointers(ParticleSystemClass* pPS)
 {
-	for (auto const& pAnim : AnimExt::AnimsWithAttachedParticles)
+	if (!pPS) return;
+
+	if (ObjectClass* ownerObj = pPS->Owner)
 	{
-		auto const pExt = AnimExt::ExtMap.TryFind(pAnim);
-
-		if (!pExt)
-			continue; // Skip animation, chances are it is a null type anim in process of being removed.
-
-		if (pExt->AttachedSystem == pParticleSystem)
+		if (auto* pAnim = abstract_cast<AnimClass*>(ownerObj))
 		{
-			pExt->AttachedSystem = nullptr;
-
-			auto& vec = AnimExt::AnimsWithAttachedParticles;
-			vec.erase(std::remove(vec.begin(), vec.end(), pAnim), vec.end());
+			if (auto* pExt = AnimExt::ExtMap.TryFind(pAnim))
+			{
+				if (pExt->AttachedSystem == pPS)
+				{
+					pExt->AttachedSystem = nullptr;
+					auto& v = AnimExt::AnimsWithAttachedParticles;
+					v.erase(std::remove(v.begin(), v.end(), pAnim), v.end());
+					return;
+				}
+			}
 		}
+	}
+
+	// fallback: sever any stragglers that still point to this PS
+	auto& v = AnimExt::AnimsWithAttachedParticles;
+	for (size_t i = 0; i < v.size(); /* no ++ */)
+	{
+		AnimClass* a = v[i];
+		if (auto* x = AnimExt::ExtMap.TryFind(a))
+		{
+			if (x->AttachedSystem == pPS)
+			{
+				x->AttachedSystem = nullptr;
+				v[i] = v.back(); v.pop_back();
+				continue; // re-check swapped element
+			}
+		}
+		++i;
 	}
 }
 

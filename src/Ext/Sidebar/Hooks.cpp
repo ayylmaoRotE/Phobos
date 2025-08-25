@@ -206,4 +206,7 @@ DEFINE_HOOK(0x6A99B7, TabCameoListClass_Draw_SuperDarken, 0x5)
 	return 0;
 }
 
+
+
+
 #pragma endregion

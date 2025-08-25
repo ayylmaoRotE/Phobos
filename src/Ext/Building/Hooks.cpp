@@ -10,6 +10,32 @@
 #include <Ext/WarheadType/Body.h>
 #include <TacticalClass.h>
 #include <PlanningTokenClass.h>
+#include <algorithm> // swap-erase helper
+
+// stable, single-pass erase of the first matching pointer; preserves order
+template<typename T>
+static __forceinline void stable_erase_first(std::vector<T*>& v, T* value)
+{
+	for (size_t i = 0, n = v.size(); i < n; ++i)
+	{
+		if (v[i] == value) { v.erase(v.begin() + i); return; }
+	}
+}
+
+// 🔧 Optimized: Small deterministic swap-erase. Order is not semantically used for RestrictedFactoryPlants.
+template<typename TCont, typename TValue>
+__forceinline void swap_erase_first(TCont& v, const TValue& value)
+{
+	for (size_t i = 0, n = v.size(); i < n; ++i)
+	{
+		if (v[i] == value)
+		{
+			if (i + 1 != n) { std::swap(v[i], v[n - 1]); }
+			v.pop_back();
+			return;
+		}
+	}
+}
 
 #pragma region Update
 
@@ -387,8 +413,8 @@ DEFINE_HOOK(0x448A31, BuildingClass_Captured_FactoryPlant1, 0x6)
 
 		if (!pHouseExt->RestrictedFactoryPlants.empty())
 		{
-			auto& vec = pHouseExt->RestrictedFactoryPlants;
-			vec.erase(std::remove(vec.begin(), vec.end(), pThis), vec.end());
+			// 🔧 Optimized: Faster deterministic removal (order doesn't matter for RestrictedFactoryPlants)
+			swap_erase_first(pHouseExt->RestrictedFactoryPlants, pThis);
 		}
 
 		return Skip;

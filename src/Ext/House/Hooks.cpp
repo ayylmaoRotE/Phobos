@@ -12,12 +12,15 @@
 DEFINE_HOOK(0x508C30, HouseClass_UpdatePower_UpdateCounter, 0x5)
 {
 	GET(HouseClass*, pThis, ECX);
-	auto const pHouseExt = HouseExt::ExtMap.Find(pThis);
+	auto* const pHouseExt = HouseExt::ExtMap.Find(pThis);
 
+	// Reset the cache
 	pHouseExt->PowerPlantEnhancers.clear();
 
-	// This pre-iterating ensure our process to be done in O(NM) instead of O(N^2),
-	// as M should be much less than N, this will be a great improvement. - secsome
+	// 🔧 Optimized: Count candidate enhancers per BuildingType by ArrayIndex
+	const size_t typeCount = static_cast<size_t>(BuildingTypeClass::Array.Count);
+	std::vector<uint16_t> counts(typeCount, 0); // compact and zero-initialized
+
 	for (auto const pBld : pThis->Buildings)
 	{
 		if (TechnoExt::IsActive(pBld) && pBld->IsOnMap && pBld->HasPower)
@@ -25,15 +28,27 @@ DEFINE_HOOK(0x508C30, HouseClass_UpdatePower_UpdateCounter, 0x5)
 			const auto pType = pBld->Type;
 			const auto pExt = BuildingTypeExt::ExtMap.Find(pType);
 
-			if (pExt->PowerPlantEnhancer_Buildings.size()
-				&& (pExt->PowerPlantEnhancer_Amount != 0 || pExt->PowerPlantEnhancer_Factor != 1.0f))
+			if (!pExt->PowerPlantEnhancer_Buildings.empty()
+				&& (pExt->PowerPlantEnhancer_Amount != 0
+					|| pExt->PowerPlantEnhancer_Factor != 1.0f))
 			{
-				++pHouseExt->PowerPlantEnhancers[pType->ArrayIndex];
+				const int idx = pType->ArrayIndex;
+				if (idx >= 0 && static_cast<size_t>(idx) < typeCount)
+					++counts[static_cast<size_t>(idx)];
 			}
-
 		}
 	}
 
+	// 🔧 Optimized: Populate the associative container only for non-zero indices
+	// (avoids creating lots of empty/default nodes)
+	for (size_t i = 0; i < typeCount; ++i)
+	{
+		if (counts[i] != 0)
+		{
+			// works for std::map and std::unordered_map; avoids operator[] default insert
+			pHouseExt->PowerPlantEnhancers.emplace(static_cast<int>(i), static_cast<int>(counts[i]));
+		}
+	}
 
 	return 0;
 }
@@ -70,25 +85,60 @@ DEFINE_HOOK(0x508D8D, HouseClass_UpdatePower_Techno, 0x6)
 
 	GET(HouseClass*, pThis, ESI);
 
-	auto updateDrainForThisType = [pThis](const TechnoTypeClass* pType)
+	// 🔧 Optimized: Static caches - only types with non-zero Power
+	struct NonZeroLists
 	{
-			const int count = pThis->CountOwnedAndPresent(pType);
-			if (count == 0)
-				return;
-			const auto pExt = TechnoTypeExt::ExtMap.Find(pType);
-			if (pExt->Power > 0)
-				pThis->PowerOutput += pExt->Power * count;
-			else
-				pThis->PowerDrain -= pExt->Power * count;
+		std::vector<const InfantryTypeClass*>  Inf;
+		std::vector<const UnitTypeClass*>      Uni;
+		std::vector<const AircraftTypeClass*>  Air;
+		bool Built = false;
 	};
+	static NonZeroLists nz;
 
-	for (const auto pType : InfantryTypeClass::Array)
-		updateDrainForThisType(pType);
-	for (const auto pType : UnitTypeClass::Array)
-		updateDrainForThisType(pType);
-	for (const auto pType : AircraftTypeClass::Array)
-		updateDrainForThisType(pType);
-	// Don't do this for buildings, they've already been counted.
+	if (!nz.Built)
+	{
+		// Infantry
+		for (auto const pType : InfantryTypeClass::Array)
+		{
+			const auto* pExt = TechnoTypeExt::ExtMap.Find(pType);
+			if (pExt->Power != 0) nz.Inf.push_back(pType);
+		}
+		// Units
+		for (auto const pType : UnitTypeClass::Array)
+		{
+			const auto* pExt = TechnoTypeExt::ExtMap.Find(pType);
+			if (pExt->Power != 0) nz.Uni.push_back(pType);
+		}
+		// Aircraft
+		for (auto const pType : AircraftTypeClass::Array)
+		{
+			const auto* pExt = TechnoTypeExt::ExtMap.Find(pType);
+			if (pExt->Power != 0) nz.Air.push_back(pType);
+		}
+		nz.Built = true;
+	}
+
+	auto accumulate = [pThis](const auto& vec)
+		{
+			for (const auto* pType : vec)
+			{
+				const int count = pThis->CountOwnedAndPresent(pType);
+				if (!count) continue;
+
+				const auto* pExt = TechnoTypeExt::ExtMap.Find(pType);
+				// same math as before
+				if (pExt->Power > 0)
+					pThis->PowerOutput += pExt->Power * count;
+				else
+					pThis->PowerDrain -= pExt->Power * count;
+			}
+		};
+
+	// 🔧 Optimized: Only iterate non-zero-power types (much fewer)
+	accumulate(nz.Inf);
+	accumulate(nz.Uni);
+	accumulate(nz.Air);
+	// Buildings are already accounted for elsewhere.
 
 	return 0;
 }
