@@ -96,6 +96,8 @@ public:
 		std::vector<ValueableVector<int>> SW_Link_RandomWeightsData;
 
 		std::vector<TypeConvertGroup> Convert_Pairs;
+		Valueable<bool> Convert_UseSWRange;
+		Nullable<AnimTypeClass*> ConvertAnim;
 
 		Valueable<bool> UseWeeds;
 		Valueable<int> UseWeeds_Amount;
@@ -177,6 +179,8 @@ public:
 			, SW_Next_RandomWeightsData {}
 			, ShowTimer_Priority { 0 }
 			, Convert_Pairs {}
+			, Convert_UseSWRange { false }
+			, ConvertAnim {}
 			, ShowDesignatorRange { true }
 			, TabIndex { 1 }
 			, SuperWeaponSidebar_Allow {}
@@ -225,7 +229,7 @@ public:
 		void ApplyLimboKill(HouseClass* pHouse);
 		void ApplyDetonation(HouseClass* pHouse, const CellStruct& cell);
 		void ApplySWNext(SuperClass* pSW, const CellStruct& cell);
-		void ApplyTypeConversion(SuperClass* pSW);
+		void ApplyTypeConversion(SuperClass* pSW, const CellStruct& cell);
 		void HandleEMPulseLaunch(SuperClass* pSW, const CellStruct& cell) const;
 		std::vector<BuildingClass*> GetEMPulseCannons(HouseClass* pOwner, const CellStruct& cell) const;
 		std::pair<double, double> GetEMPulseCannonRange(BuildingClass* pBuilding) const;

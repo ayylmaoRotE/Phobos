@@ -55,7 +55,7 @@ void SWTypeExt::FireSuperWeaponExt(SuperClass* pSW, const CellStruct& cell)
 
 	if (!pTypeExt->Convert_Pairs.empty())
 	{
-		pTypeExt->ApplyTypeConversion(pSW);
+		pTypeExt->ApplyTypeConversion(pSW, cell);
 	}
 
 	if (!pTypeExt->SW_Link.empty())
@@ -405,12 +405,58 @@ void SWTypeExt::ExtData::ApplySWNext(SuperClass* pSW, const CellStruct& cell)
 	}
 }
 
-void SWTypeExt::ExtData::ApplyTypeConversion(SuperClass* pSW)
+void SWTypeExt::ExtData::ApplyTypeConversion(SuperClass* pSW, const CellStruct& cell)
 {
 	if (!pSW || !pSW->Owner) { return; }
 
-	for (const auto pTargetFoot : FootClass::Array)
-		TypeConvertGroup::Convert(pTargetFoot, this->Convert_Pairs, pSW->Owner);
+	if (this->Convert_UseSWRange)
+	{
+		// Range-based conversion: only affect units within Range of target cell
+		const float rangeCells = pSW->Type->Range;
+		const float rangeLeptons = rangeCells * Unsorted::LeptonsPerCell;
+		const float rangeSquared = rangeLeptons * rangeLeptons;
+		const CoordStruct targetCoords = CellClass::Cell2Coord(cell);
+
+		for (const auto pTechno : TechnoClass::Array)
+		{
+			auto pTargetFoot = abstract_cast<FootClass*>(pTechno);
+			if (!pTargetFoot)
+				continue;
+
+			// Skip dead/dying units but allow passengers (InLimbo with Transporter)
+			if (pTargetFoot->Health <= 0 || !pTargetFoot->IsAlive || pTargetFoot->IsCrashing || pTargetFoot->IsSinking)
+				continue;
+
+			// Skip units in limbo that are NOT passengers
+			if (pTargetFoot->InLimbo && !pTargetFoot->Transporter)
+				continue;
+
+			// For passengers, use the transporter's location for distance calculation
+			const CoordStruct unitCoords = pTargetFoot->InLimbo && pTargetFoot->Transporter 
+				? pTargetFoot->Transporter->GetCoords() 
+				: pTargetFoot->GetCoords();
+			const float distanceSquared = (float)(targetCoords - unitCoords).MagnitudeSquared();
+
+			if (distanceSquared <= rangeSquared)
+				TypeConvertGroup::Convert(pTargetFoot, this->Convert_Pairs, pSW->Owner, this->ConvertAnim.Get());
+		}
+	}
+	else
+	{
+		// Global conversion: affect all units (original behavior)
+		for (const auto pTechno : TechnoClass::Array)
+		{
+			auto pTargetFoot = abstract_cast<FootClass*>(pTechno);
+			if (!pTargetFoot)
+				continue;
+
+			// Skip dead/dying units but allow passengers (InLimbo with Transporter)
+			if (pTargetFoot->Health <= 0 || !pTargetFoot->IsAlive || pTargetFoot->IsCrashing || pTargetFoot->IsSinking)
+				continue;
+
+			TypeConvertGroup::Convert(pTargetFoot, this->Convert_Pairs, pSW->Owner, this->ConvertAnim.Get());
+		}
+	}
 }
 
 void SWTypeExt::ExtData::HandleEMPulseLaunch(SuperClass* pSW, const CellStruct& cell) const
