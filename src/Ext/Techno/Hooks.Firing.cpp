@@ -868,6 +868,29 @@ DEFINE_HOOK(0x6F3AEB, TechnoClass_GetFLH, 0x6)
 
 #pragma endregion
 
+// Fix OpenTopped aircraft getting stuck due to zero weapon range
+DEFINE_HOOK(0x701393, TechnoClass_GetWeaponRange_OpenToppedAircraft, 0x6)
+{
+	GET(TechnoClass*, pThis, ECX);
+	GET(int, result, EAX);
+
+	const auto pThisType = pThis->GetTechnoType();
+
+	// Fix for OpenTopped aircraft with zero range causing them to get stuck
+	if (result == 0 && pThis->WhatAmI() == AbstractType::Aircraft && pThisType->OpenTopped)
+	{
+		result = pThisType->GuardRange;
+		if (result == 0)
+		{
+			// Fallback to a reasonable default range if GuardRange is also 0
+			result = 5 * Unsorted::LeptonsPerCell; // 5 cells default
+		}
+	}
+
+	R->EAX(result);
+	return 0;
+}
+
 // Basically a hack to make game and Ares pick laser properties from non-Primary weapons.
 DEFINE_HOOK(0x70E1A0, TechnoClass_GetTurretWeapon_LaserWeapon, 0x5)
 {

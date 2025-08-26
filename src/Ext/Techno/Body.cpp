@@ -834,6 +834,7 @@ void TechnoExt::ExtData::Serialize(T& Stm)
 		.Process(this->TintIntensityEnemies)
 		.Process(this->AttackMoveFollowerTempCount)
 		.Process(this->MyGiftBox)
+		.Process(this->AircraftOpentoppedInitEd)
 		;
 }
 
@@ -902,6 +903,51 @@ DEFINE_HOOK(0x6F4500, TechnoClass_DTOR, 0x5)
 	TechnoExt::ExtMap.Remove(pItem);
 
 	return 0;
+}
+
+void TechnoExt::ExtData::UpdateAircraftOpentopped()
+{
+	auto const pThis = this->OwnerObject();
+
+	if (!TechnoExt::IsActive(pThis))
+		return;
+
+	// Only process aircraft
+	if (pThis->WhatAmI() != AbstractType::Aircraft)
+		return;
+
+	const auto pType = pThis->GetTechnoType();
+
+	if (pType->Passengers > 0 && !AircraftOpentoppedInitEd)
+	{
+		bool hasPassengers = false;
+		for (NextObject object(pThis->Passengers.GetFirstPassenger()); object; ++object)
+		{
+			if (auto const pInf = abstract_cast<FootClass*>(*object))
+			{
+				hasPassengers = true;
+				if (!pInf->Transporter || !pInf->InOpenToppedTransport)
+				{
+					if (pType->OpenTopped)
+					{
+						pThis->EnteredOpenTopped(pInf);
+						// Ensure passenger is marked as being in OpenTopped transport
+						pInf->InOpenToppedTransport = true;
+					}
+
+					if (pType->Gunner)
+						abstract_cast<FootClass*>(pThis)->ReceiveGunner(pInf);
+
+					pInf->Transporter = pThis;
+					pInf->Undiscover();
+				}
+			}
+		}
+
+		// Only mark as initialized if we actually have passengers
+		if (hasPassengers)
+			AircraftOpentoppedInitEd = true;
+	}
 }
 
 DEFINE_HOOK_AGAIN(0x70C250, TechnoClass_SaveLoad_Prefix, 0x8)

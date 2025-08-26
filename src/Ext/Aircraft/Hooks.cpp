@@ -321,6 +321,20 @@ DEFINE_HOOK(0x418B8A, AircraftClass_Mission_Attack_Delay5, 0x6)
 
 #pragma endregion
 
+// Fix for OpenTopped aircraft circling issue when landing with passengers
+DEFINE_HOOK(0x417A2E, AircraftClass_EnterIdleMode_Opentopped, 0x5)
+{
+	GET(AircraftClass*, pThis, ESI);
+
+	R->EDI(2);
+
+	// This plane stuck on mission::Move! So let's redirect it to other address that deals with this
+	return !pThis->Spawned &&
+		pThis->Type->OpenTopped &&
+		(pThis->QueuedMission != Mission::Attack) && !pThis->Target
+		? 0x417944 : 0x417AD4;
+}
+
 DEFINE_HOOK_AGAIN(0x41882C, AircraftClass_MissionAttack_ScatterCell1, 0x6);
 DEFINE_HOOK_AGAIN(0x41893B, AircraftClass_MissionAttack_ScatterCell1, 0x6);
 DEFINE_HOOK_AGAIN(0x418A4A, AircraftClass_MissionAttack_ScatterCell1, 0x6);

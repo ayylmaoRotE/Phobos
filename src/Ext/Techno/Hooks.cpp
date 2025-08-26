@@ -587,6 +587,10 @@ DEFINE_HOOK(0x4D7221, FootClass_Unlimbo_LaserTrails, 0x6)
 		pTrail->Visible = true;
 	}
 
+	// Initialize OpenTopped aircraft passengers when first unlimboed
+	if (pTechno->WhatAmI() == AbstractType::Aircraft)
+		pTechnoExt->UpdateAircraftOpentopped();
+
 	return 0;
 }
 

@@ -94,6 +94,7 @@ public:
 		std::map<WeaponTypeClass*, CDTimerClass> ExtraFireTimers;
 
 		std::unique_ptr<GiftBox> MyGiftBox;
+		bool AircraftOpentoppedInitEd;
 
 		ExtData(TechnoClass* OwnerObject) : Extension<TechnoClass>(OwnerObject)
 			, TypeExtData { nullptr }
@@ -153,6 +154,7 @@ public:
 			, TintIntensityEnemies { 0 }
 			, AttackMoveFollowerTempCount { 0 }
 			, ExtraFireTimers {}
+			, AircraftOpentoppedInitEd { false }
 		{ }
 
 		void OnEarlyUpdate();
@@ -190,6 +192,7 @@ public:
 		int ApplyForceWeaponInRange(AbstractClass* pTarget);
 		void ResetDelayedFireTimer();
 		void UpdateTintValues();
+		void UpdateAircraftOpentopped();
 
 		virtual ~ExtData() override;
 		virtual void InvalidatePointer(void* ptr, bool bRemoved) override;
