@@ -30,3 +30,11 @@ out
 .claude/
 SW_AuxTechnos_*.md
 SW_AuxTechnos_*_Test.ini
+# AI scratch/tests
+.claude/
+SW_AuxTechnos_*.md
+SW_AuxTechnos*_Test.ini
+
+# Windows device name — ignore any file literally named 'nul'
+/nul
+[Nn][Uu][Ll]
