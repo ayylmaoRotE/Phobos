@@ -8,6 +8,7 @@
 #include <Ext/SWType/Body.h>
 #include <Ext/House/Body.h>
 #include <Utilities/AresFunctions.h>
+#include <unordered_map>
 
 SWButtonClass::SWButtonClass(int superIdx, int x, int y, int width, int height)
 	: GadgetClass(x, y, width, height, (GadgetFlag::LeftPress | GadgetFlag::RightPress), false)
@@ -171,7 +172,41 @@ bool SWButtonClass::Draw(bool forced)
 	if (pSuper->ShouldDrawProgress())
 	{
 		Point2D loc = { location.X, location.Y };
-		pSurface->DrawSHP(FileSystem::SIDEBAR_PAL, FileSystem::GCLOCK2_SHP, pSuper->AnimStage() + 1, &loc, &bounds, BlitterFlags::bf_400 | BlitterFlags::TransLucent50, 0, 0, ZGradient::Ground, 1000, 0, nullptr, 0, 0, 0);
+		BlitterFlags blitterFlags = BlitterFlags::bf_400;
+		SHPStruct* pGClockSHP = FileSystem::GCLOCK2_SHP;
+
+		// Use custom gclock image if specified with caching to prevent excessive file loads
+		if (pSWExt->SidebarGClockImage.data()[0] != '\0')
+		{
+			static std::unordered_map<std::string, SHPStruct*> gclockCache;
+			const std::string filename = pSWExt->SidebarGClockImage.data();
+
+			auto it = gclockCache.find(filename);
+			if (it == gclockCache.end())
+			{
+				auto pCustomGClock = FileSystem::LoadSHPFile(filename.c_str());
+				it = gclockCache.emplace(filename, pCustomGClock).first;
+			}
+
+			if (it->second)
+				pGClockSHP = it->second;
+		}
+
+		// Apply custom translucency settings
+		if (pSWExt->SidebarGClockTranslucent)
+		{
+			int translucentLevel = std::max(0, std::min(100, pSWExt->SidebarGClockTranslucentLevel.Get()));
+			if (translucentLevel <= 25)
+				blitterFlags |= BlitterFlags::TransLucent25;
+			else if (translucentLevel <= 50)
+				blitterFlags |= BlitterFlags::TransLucent50;
+			else if (translucentLevel <= 75)
+				blitterFlags |= BlitterFlags::TransLucent75;
+			else
+				blitterFlags |= BlitterFlags::bf_400; // No translucency for 100%
+		}
+
+		pSurface->DrawSHP(FileSystem::SIDEBAR_PAL, pGClockSHP, pSuper->AnimStage() + 1, &loc, &bounds, blitterFlags, 0, 0, ZGradient::Ground, 1000, 0, nullptr, 0, 0, 0);
 	}
 
 	return true;

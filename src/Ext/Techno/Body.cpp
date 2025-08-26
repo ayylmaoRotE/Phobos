@@ -10,6 +10,7 @@
 #include <Ext/WeaponType/Body.h>
 
 #include <Utilities/AresFunctions.h>
+#include <New/AnonymousType/GiftBoxFunctional.h>
 
 TechnoExt::ExtContainer TechnoExt::ExtMap;
 UnitClass* TechnoExt::Deployer = nullptr;
@@ -741,6 +742,35 @@ bool TechnoExt::IsHealthInThreshold(TechnoClass* pObject, double min, double max
 	return hp <= max && hp >= min;
 }
 
+bool TechnoExt::CannotMove(UnitClass* pThis)
+{
+	const auto pType = pThis->Type;
+
+	if (pType->Speed == 0)
+		return true;
+
+	if (!pThis->IsInAir())
+	{
+		LandType landType = pThis->GetCell()->LandType;
+		const LandType movementRestrictedTo = pType->MovementRestrictedTo;
+
+		if (pThis->OnBridge
+			&& (landType == LandType::Water || landType == LandType::Beach))
+		{
+			landType = LandType::Road;
+		}
+
+		if (movementRestrictedTo != LandType::None
+			&& movementRestrictedTo != landType
+			&& landType != LandType::Tunnel)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 // =============================
 // load / save
 
@@ -806,6 +836,7 @@ void TechnoExt::ExtData::Serialize(T& Stm)
 		.Process(this->Harvester_AutoReturn_CombatTimer)
 		.Process(this->Harvester_AutoReturn_IssueCooldown)
 		.Process(this->Harvester_AutoReturn_Flags)
+		.Process(this->MyGiftBox)
 		;
 }
 
@@ -861,6 +892,14 @@ DEFINE_HOOK(0x6F3260, TechnoClass_CTOR, 0x5)
 DEFINE_HOOK(0x6F4500, TechnoClass_DTOR, 0x5)
 {
 	GET(TechnoClass*, pItem, ECX);
+	// Handle GiftBox Destroy
+	if (pItem && pItem->GetTechnoType())
+	{
+		auto pExt = TechnoExt::ExtMap.Find(pItem);
+		auto pTypeExt = TechnoTypeExt::ExtMap.Find(pItem->GetTechnoType());
+		if (pExt && pTypeExt)
+			GiftBoxFunctional::Destroy(pExt, pTypeExt);
+	}
 
 	TechnoExt::ExtMap.Remove(pItem);
 

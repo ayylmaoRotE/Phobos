@@ -10,6 +10,7 @@
 #include <New/Entity/LaserTrailClass.h>
 #include <New/Entity/AttachEffectClass.h>
 #include <Utilities/Savegame.h>
+#include <New/AnonymousType/GiftBox.h>
 
 class BulletClass;
 
@@ -111,6 +112,8 @@ public:
 			if (v) { this->Harvester_AutoReturn_Flags |= HarvAuto_Flag_Suppressed; }
 			else { this->Harvester_AutoReturn_Flags &= (unsigned char)~HarvAuto_Flag_Suppressed; }
 		}
+
+		std::unique_ptr<GiftBox> MyGiftBox;
 
 		// ExtraFire ROF timers - not serialized, reset on load
 		std::map<WeaponTypeClass*, CDTimerClass> ExtraFireTimers;
@@ -297,7 +300,7 @@ public:
 	static bool IsHealthInThreshold(TechnoClass* pObject, double min, double max);
 	static UnitTypeClass* GetUnitTypeExtra(UnitClass* pUnit);
 	static AircraftTypeClass* GetAircraftTypeExtra(AircraftClass* pAircraft);
-
+	static bool CannotMove(UnitClass* pThis);
 	// WeaponHelpers.cpp
 	static int PickWeaponIndex(TechnoClass* pThis, TechnoClass* pTargetTechno, AbstractClass* pTarget, int weaponIndexOne, int weaponIndexTwo, bool allowFallback = true, bool allowAAFallback = true);
 	static void FireWeaponAtSelf(TechnoClass* pThis, WeaponTypeClass* pWeaponType);

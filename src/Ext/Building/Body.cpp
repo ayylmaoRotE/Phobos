@@ -357,59 +357,121 @@ bool BuildingExt::ExtData::HandleInfiltrate(HouseClass* pInfiltratorHouse, int m
 // For unit's weapons factory only
 void BuildingExt::KickOutStuckUnits(BuildingClass* pThis)
 {
-	// 1) If the factory currently has a linked unit and it's stuck, free & send it to Guard.
-	if (auto* const pUnit = abstract_cast<UnitClass*>(pThis->GetNthLink()))
-	{
-		if (!pUnit->IsTether && pUnit->GetCurrentSpeed() <= 0)
-		{
-			if (auto* const pTeam = pUnit->Team)
-				pTeam->LiberateMember(pUnit);
+	if (!pThis) return;
 
-			pThis->SendCommand(RadioCommand::NotifyUnlink, pUnit);
-			pUnit->QueueMission(Mission::Guard, false);
-			return; // one-after-another
-		}
-	}
-
-	// 2) Otherwise, scan the exit cell (and one neighbor to the East) for a same-house, non-tethered unit
-	//    that is within cell height. Link it and force an Unload.
-	CoordStruct buffer = CoordStruct::Empty;
-	CellClass* cell = MapClass::Instance.GetCellAt(*pThis->GetExitCoords(&buffer, 0));
-	if (!cell)
+	// Guard: only non-naval WeaponsFactory (matches original intent)
+	const auto* const pType = pThis->Type;
+	if (!pType || pType->Factory != AbstractType::UnitType || !pType->WeaponsFactory || pType->Naval)
 		return;
 
 	HouseClass* const pOwner = pThis->Owner;
+	if (!pOwner) return;
 
-	// Check up to 2 cells: exit cell, then East neighbor.
-	for (int step = 0; step < 2 && cell; ++step)
+	// ============================================================
+	// STEP 1: If the factory already has a linked unit and it’s stuck,
+	//         free it and send to Guard (prevents hard stalls).
+	// ============================================================
+	if (auto* const pLinked = abstract_cast<UnitClass*>(pThis->GetNthLink()))
 	{
-		for (auto* obj = cell->FirstObject; obj; obj = obj->NextObject)
+		// Non-tethered and not moving → consider it stuck at the gate
+		if (!pLinked->IsTether && pLinked->GetCurrentSpeed() <= 0)
+		{
+			if (auto* const pTeam = pLinked->Team)
+				pTeam->LiberateMember(pLinked); // deterministic, no RNG
+
+			pThis->SendCommand(RadioCommand::NotifyUnlink, pLinked);
+			pLinked->QueueMission(Mission::Guard, false);
+			return; // one-after-another behavior preserved
+		}
+	}
+
+	// ============================================================
+	// STEP 2: Probe the exit cell and its East neighbour quickly.
+	//         If we find a same-house, non-tethered unit within
+	//         height bounds and with no set destination, link & unload.
+	// ============================================================
+	CoordStruct exitCoords = CoordStruct::Empty;
+	CellClass* pCell = MapClass::Instance.GetCellAt(*pThis->GetExitCoords(&exitCoords, 0));
+	if (pCell)
+	{
+		for (int probe = 0; probe < 2 && pCell; ++probe)
+		{
+			for (auto* obj = pCell->FirstObject; obj; obj = obj->NextObject)
+			{
+				if (obj->WhatAmI() != AbstractType::Unit)
+					continue;
+
+				auto* const u = static_cast<UnitClass*>(obj);
+				if (u->Owner != pOwner || u->IsTether)
+					continue;
+
+				const int h = u->GetHeight();
+				if (h < 0 || h > Unsorted::CellHeight)
+					continue;
+
+				// Match original v1 intent here: pick units that aren't going anywhere yet
+				if (u->Locomotor->Destination() != CoordStruct::Empty)
+					continue;
+
+				if (auto* const team = u->Team)
+					team->LiberateMember(u);
+
+				pThis->SendCommand(RadioCommand::RequestLink, u);
+				pThis->QueueMission(Mission::Unload, false);
+				return; // one-after-another
+			}
+
+			// check East neighbour once
+			if (probe == 0)
+				pCell = pCell->GetNeighbourCell(FacingType::East);
+		}
+	}
+
+	// ============================================================
+	// STEP 3 (fallback): Full corridor sweep from door → exit (v1).
+	//                    This is more thorough but still deterministic.
+	// ============================================================
+	// Compute the “door” X (right edge - 2) and the exit X
+	const CellStruct exitCell = CellClass::Coord2Cell(exitCoords);
+	CellStruct sweep = exitCell;
+
+	// door X: world X (in leptons) → cell X, plus width - 2
+	const short doorX = static_cast<short>(
+		(pThis->Location.X / Unsorted::LeptonsPerCell) + pType->GetFoundationWidth() - 2);
+
+	sweep.X = doorX;
+	CellClass* pSweep = MapClass::Instance.GetCellAt(sweep);
+	while (pSweep)
+	{
+		for (auto* obj = pSweep->FirstObject; obj; obj = obj->NextObject)
 		{
 			if (obj->WhatAmI() != AbstractType::Unit)
 				continue;
 
-			auto* const unit = static_cast<UnitClass*>(obj);
-			if (unit->Owner != pOwner || unit->IsTether)
+			auto* const u = static_cast<UnitClass*>(obj);
+			// same house, has no destination (classic “stuck”), within cell height
+			if (u->Owner != pOwner || u->Locomotor->Destination() != CoordStruct::Empty)
 				continue;
 
-			const int h = unit->GetHeight();
+			const int h = u->GetHeight();
 			if (h < 0 || h > Unsorted::CellHeight)
 				continue;
 
-			if (auto* const team = unit->Team)
-				team->LiberateMember(unit);
+			if (auto* const team = u->Team)
+				team->LiberateMember(u);
 
-			pThis->SendCommand(RadioCommand::RequestLink, unit);
+			pThis->SendCommand(RadioCommand::RequestLink, u);
 			pThis->QueueMission(Mission::Unload, false);
 			return; // one-after-another
 		}
 
-		// continue towards bottom-right per your original: move East once
-		if (step == 0)
-			cell = cell->GetNeighbourCell(FacingType::East);
-	}
+		// march from door X toward exit X
+		if (--sweep.X < exitCell.X)
+			break;
 
-	// no stuck unit found → nothing to do
+		pSweep = MapClass::Instance.GetCellAt(sweep);
+	}
+	// nothing to do
 }
 
 // Get all cells covered by the building, optionally including those covered by OccupyHeight.

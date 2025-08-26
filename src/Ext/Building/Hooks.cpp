@@ -236,7 +236,59 @@ DEFINE_HOOK(0x44D455, BuildingClass_Mission_Missile_EMPulseBulletWeapon, 0x8)
 
 #pragma region KickOutStuckUnits
 
-// Kick out stuck units when the factory building is not busy, only factory buildings can enter this hook
+// v1 piece 1: treat factory as not-busy if JJ+BalloonHover link, to avoid deadlocks
+DEFINE_HOOK(0x44955D, BuildingClass_WeaponFactoryOutsideBusy_WeaponFactoryCell, 0x6)
+{
+	enum { NotBusy = 0x44969B };
+
+	GET(BuildingClass* const, pThis, ESI);
+
+	const auto pLink = pThis->GetNthLink();
+	if (!pLink)
+		return NotBusy;
+
+	const auto pLinkType = pLink->GetTechnoType();
+	if (pLinkType->JumpJet && pLinkType->BalloonHover)
+		return NotBusy;
+
+	return 0;
+}
+
+// v1 piece 2: at unload time, if unit has no destination, evacuate congestion and force a destination
+DEFINE_HOOK(0x44E202, BuildingClass_Mission_Unload_CheckStuck, 0x6)
+{
+	enum { Waiting = 0x44E267, NextStatus = 0x44E20C };
+
+	GET(BuildingClass*, pThis, EBP);
+
+	if (!pThis->IsTether)
+		return NextStatus;
+
+	if (const auto pUnit = abstract_cast<UnitClass*>(pThis->GetNthLink()))
+	{
+		// Detecting movement status
+		if (pUnit->Locomotor->Destination() == CoordStruct::Empty)
+		{
+			// Evacuate the congestion at the entrance
+			reinterpret_cast<void(__thiscall*)(BuildingClass*)>(0x449540)(pThis);
+
+			const auto pType = pThis->Type;
+			const auto cell = pThis->GetMapCoords() + pType->FoundationOutside[10];
+			const auto door = cell - CellStruct { 1, 0 };
+			const auto pDest = MapClass::Instance.GetCellAt(door);
+
+			// Hover units may stop one cell behind their destination, so push one more cell
+			pUnit->SetDestination(
+				(pUnit->Destination != pDest ? pDest : MapClass::Instance.GetCellAt(cell)),
+				true
+			);
+		}
+	}
+
+	return Waiting;
+}
+
+// v2 sweeper retained: periodic fallback to kick stuck units out
 DEFINE_HOOK(0x450248, BuildingClass_UpdateFactory_KickOutStuckUnits, 0x6)
 {
 	GET(BuildingClass*, pThis, ESI);
@@ -253,6 +305,7 @@ DEFINE_HOOK(0x450248, BuildingClass_UpdateFactory_KickOutStuckUnits, 0x6)
 		const auto mission = pThis->CurrentMission;
 		const bool stuckWhileGuard = (mission == Mission::Guard) && !pThis->InLimbo;
 		const bool stuckWhileUnload = (mission == Mission::Unload) && (pThis->MissionStatus == 1);
+
 		if (stuckWhileGuard || stuckWhileUnload)
 			BuildingExt::KickOutStuckUnits(pThis);
 	}
@@ -260,13 +313,14 @@ DEFINE_HOOK(0x450248, BuildingClass_UpdateFactory_KickOutStuckUnits, 0x6)
 	return 0;
 }
 
-// Should not kick out units if the factory building is in construction process
+// unchanged: don’t kick during construction/unload transition
 DEFINE_HOOK(0x4444A0, BuildingClass_KickOutUnit_NoKickOutInConstruction, 0xA)
 {
 	enum { ThisIsOK = 0x444565, ThisIsNotOK = 0x4444B3 };
 
 	GET(BuildingClass* const, pThis, ESI);
 	const auto mission = pThis->GetCurrentMission();
+
 	return (mission == Mission::Unload || mission == Mission::Construction) ? ThisIsNotOK : ThisIsOK;
 }
 

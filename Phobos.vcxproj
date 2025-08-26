@@ -19,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Ext\Beacon\Hooks.Beacon.cpp" />
+    <ClCompile Include="src\Ext\Event\Body.cpp" />
     <ClCompile Include="src\Ext\Infantry\Hooks.cpp" />
     <ClCompile Include="src\Ext\Infantry\Hooks.Firing.cpp" />
     <ClCompile Include="src\Ext\Sidebar\Seatbelt.cpp" />
@@ -231,6 +232,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Ext\EBolt\Body.h" />
+    <ClInclude Include="src\Ext\Event\Body.h" />
     <ClInclude Include="src\Ext\Sidebar\SWSidebar\UISafeOps.h" />
     <ClInclude Include="src\Misc\AnimationBudget.h" />
     <ClInclude Include="src\Misc\BeaconTTL.h" />

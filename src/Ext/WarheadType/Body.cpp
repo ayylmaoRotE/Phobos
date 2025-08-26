@@ -244,15 +244,63 @@ void WarheadTypeExt::ExtData::ReloadAllHitAnimData(CCINIClass* pINI)
 					if (auto pAnimType = AnimTypeClass::FindOrAllocate(tempBuffer))
 					{
 						pWHExt->ArmorHitAnim[armorName] = pAnimType;
-						Debug::Log("DEBUG: Loaded %s HitAnim.%s=%s\n", pSection, armorName, tempBuffer);
+						//Debug::Log("DEBUG: Loaded %s HitAnim.%s=%s\n", pSection, armorName, tempBuffer);
 						totalLoaded++;
 					}
 				}
 			}
+			// Store IDs for this warhead after loading all its animations
+			pWHExt->StoreArmorHitAnimIDs();
 		}
 	}
 	Debug::Log("DEBUG: ReloadAllHitAnimData finished, loaded %d animations\n", totalLoaded);
 }
+
+void WarheadTypeExt::ExtData::StoreArmorHitAnimIDs()
+{
+	// Store animation IDs using parallel vectors for stable serialization
+	ArmorNames.clear();
+	AnimIDs.clear();
+	for (const auto& pair : ArmorHitAnim)
+	{
+		const std::string& armorName = pair.first;
+		AnimTypeClass* pAnim = pair.second;
+		if (pAnim && pAnim->ID)
+		{
+			ArmorNames.push_back(armorName);
+			AnimIDs.push_back(std::string(pAnim->ID));
+		}
+	}
+}
+
+void WarheadTypeExt::ExtData::ReconstructArmorHitAnimFromIDs()
+{
+	// Rebuild ArmorHitAnim map from parallel vectors after deserialization
+	ArmorHitAnim.clear();
+
+	// Ensure both vectors have the same size
+	size_t count = std::min(ArmorNames.size(), AnimIDs.size());
+	for (size_t i = 0; i < count; ++i)
+	{
+		const std::string& armorName = ArmorNames[i];
+		const std::string& animID = AnimIDs[i];
+
+		if (!animID.empty())
+		{
+			auto pAnim = AnimTypeClass::Find(animID.c_str());
+			if (pAnim)
+			{
+				ArmorHitAnim[armorName] = pAnim;
+				Debug::Log("HitAnim: Reconstructed %s -> %s\n", armorName.c_str(), animID.c_str());
+			}
+			else
+			{
+				Debug::Log("HitAnim: Failed to find animation '%s' for armor '%s'\n", animID.c_str(), armorName.c_str());
+			}
+		}
+	}
+}
+
 
 // =============================
 // load / save
@@ -447,6 +495,8 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	if (this->AffectsAbovePercent > this->AffectsBelowPercent)
 		Debug::Log("[Developer warning][%s] AffectsAbovePercent is bigger than AffectsBelowPercent, the warhead will never activate!\n", pSection);
 
+	this->ReverseEngineer.Read(exINI, pSection, "ReverseEngineer");
+
 	// Convert.From & Convert.To
 	TypeConvertGroup::Parse(this->Convert_Pairs, exINI, pSection, AffectedHouse::All);
 
@@ -502,6 +552,7 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 		|| this->AttachEffects.RemoveGroups.size() > 0
 		|| this->BuildingSell
 		|| this->BuildingUndeploy
+		|| this->ReverseEngineer
 	);
 
 	char tempBuffer[32];
@@ -573,10 +624,13 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 		if (animTemp.isset())
 		{
 			this->ArmorHitAnim[armorName] = animTemp.Get();
-			Debug::Log("DEBUG HitAnim: Warhead %s loaded HitAnim.%s=%s\n", 
-				pSection, armorName, animTemp.Get() ? animTemp.Get()->ID : "null");
+			// Debug::Log("DEBUG HitAnim: Warhead %s loaded HitAnim.%s=%s\n", 
+			//	pSection, armorName, animTemp.Get() ? animTemp.Get()->ID : "null");
 		}
 	}
+
+	// Store IDs for stable serialization after INI reading
+	this->StoreArmorHitAnimIDs();
 }
 
 template <typename T>
@@ -776,7 +830,11 @@ void WarheadTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->Reflected)
 		.Process(this->DamageAreaTarget)
 
-		.Process(this->CanKill);
+		.Process(this->CanKill)
+		.Process(this->ReverseEngineer)
+		// Serialize stable parallel vectors instead of raw pointers
+		.Process(this->ArmorNames)
+		.Process(this->AnimIDs);
 
 	// Note: ArmorHitAnim map is not serialized due to complexity.
 	// It will be rebuilt from INI on load, which is acceptable since
@@ -793,13 +851,8 @@ void WarheadTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
 	Extension<WarheadTypeClass>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 	
-	// Reload HitAnim data after each warhead is loaded from save
-	if (!hasReloadedHitAnim)
-	{
-		Debug::Log("DEBUG: LoadFromStream reloading HitAnim data\n");
-		ExtData::ReloadAllHitAnimData(CCINIClass::INI_Rules);
-		hasReloadedHitAnim = true;
-	}
+	// Reconstruct ArmorHitAnim pointers from serialized IDs
+	this->ReconstructArmorHitAnimFromIDs();
 }
 
 void WarheadTypeExt::ExtData::SaveToStream(PhobosStreamWriter& Stm)

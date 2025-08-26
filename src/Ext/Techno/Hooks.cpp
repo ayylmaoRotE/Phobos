@@ -18,6 +18,8 @@
 #include <Utilities/Helpers.Alex.h>
 #include <Utilities/AresHelper.h>
 #include <Utilities/AresFunctions.h>
+#include <New/AnonymousType/GiftBoxFunctional.h>
+#include <Drawing.h>
 
 #pragma region GetTechnoType
 
@@ -36,7 +38,13 @@ DEFINE_HOOK(0x6F9E50, TechnoClass_AI, 0x5)
 {
 	GET(TechnoClass*, pThis, ECX);
 
-	TechnoExt::ExtMap.Find(pThis)->OnEarlyUpdate();
+	auto pExt = TechnoExt::ExtMap.Find(pThis);
+	pExt->OnEarlyUpdate();
+
+	// Update GiftBox
+	auto pTypeExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
+	if (pExt && pTypeExt)
+		GiftBoxFunctional::AI(pExt, pTypeExt);
 
 	return 0;
 }
@@ -230,6 +238,9 @@ DEFINE_HOOK(0x6F42F7, TechnoClass_Init, 0x2)
 
 	if (!pExt->AE.HasTint && !pExt->CurrentShieldType)
 		pExt->UpdateTintValues();
+
+	// Initialize GiftBox
+	GiftBoxFunctional::Init(pExt, pTypeExt);
 
 	if (pTypeExt->Harvester_Counted)
 		HouseExt::ExtMap.Find(pThis->Owner)->OwnedCountedHarvesters.push_back(pThis);
@@ -1214,3 +1225,76 @@ DEFINE_HOOK(0x4DF3A6, FootClass_UpdateAttackMove_Follow, 0x6)
 }
 
 #pragma endregion
+
+
+DEFINE_HOOK(0x708FC0, TechnoClass_ResponseMove_Pickup, 0x5)
+{
+	enum { SkipResponse = 0x709015 };
+
+	GET(TechnoClass*, pThis, ECX);
+
+	const AbstractType rtti = pThis->WhatAmI();
+
+	if (rtti == AbstractType::Aircraft)
+	{
+		auto const pAircraft = static_cast<AircraftClass*>(pThis);
+		auto const pType = pAircraft->Type;
+
+		if (pType->Carryall && pAircraft->HasAnyLink()
+			&& generic_cast<FootClass*>(pAircraft->Destination))
+		{
+			auto const pTypeExt = TechnoTypeExt::ExtMap.Find(pType);
+
+			if (pTypeExt->VoicePickup.isset())
+			{
+				pThis->QueueVoice(pTypeExt->VoicePickup.Get());
+
+				R->EAX(1);
+				return SkipResponse;
+			}
+		}
+	}
+	else if (rtti == AbstractType::Unit)
+	{
+		auto const pUnit = static_cast<UnitClass*>(pThis);
+
+		if (TechnoExt::CannotMove(pUnit))
+			return SkipResponse;
+	}
+
+	return 0;
+}
+
+#pragma region DebugDisplay
+
+// Debug display hook to show TechnoType names on battlefield
+// Based on Otamaa's TechnoClass_DrawIt_Add implementation
+// Hook address 0x6F5190 - after TechnoClass::DrawIt
+DEFINE_HOOK(0x6F5190, TechnoClass_DrawIt_ShowTechnoNames, 0x6)
+{
+	GET(TechnoClass*, pThis, ECX);
+	GET_STACK(Point2D*, pLocation, 0x4);
+	// GET_STACK(RectangleStruct*, pBound, 0x8); // Not needed for simple text display
+
+	if (!Phobos::DisplayTechnoNames)
+		return 0;
+
+	// Get TechnoType name
+	const char* technoTypeName = pThis->GetTechnoType()->ID;
+
+	// Convert to wide string for display
+	wchar_t wideTypeName[256];
+	MultiByteToWideChar(CP_ACP, 0, technoTypeName, -1, wideTypeName, 256);
+
+	// Simple text above the unit
+	auto nPoint = *pLocation;
+	nPoint.Y -= 20; // Offset above the unit
+
+	// Get player color (convert to COLORREF)
+	COLORREF playerColor = Drawing::RGB_To_Int(pThis->Owner->Color);
+
+	// Draw text only (no background)
+	DSurface::Composite->DrawText(wideTypeName, &nPoint, playerColor);
+
+	return 0;
+}

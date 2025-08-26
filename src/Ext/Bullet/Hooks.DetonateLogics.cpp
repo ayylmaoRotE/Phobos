@@ -68,11 +68,9 @@ DEFINE_HOOK(0x469A75, BulletClass_Logics_DamageHouse, 0x7)
 DEFINE_HOOK(0x4690C1, BulletClass_Logics_DetonateOnAllMapObjects, 0x8)
 {
 	enum { ReturnFromFunction = 0x46A2FB };
-
 	GET(BulletClass*, pThis, ESI);
 
 	auto const pWHExt = WarheadTypeExt::ExtMap.Find(pThis->WH);
-
 	if (pWHExt->DetonateOnAllMapObjects && !pWHExt->WasDetonatedOnAllMapObjects
 		&& pWHExt->DetonateOnAllMapObjects_AffectTargets != AffectedTarget::None
 		&& pWHExt->DetonateOnAllMapObjects_AffectHouses != AffectedHouse::None)
@@ -81,11 +79,14 @@ DEFINE_HOOK(0x4690C1, BulletClass_Logics_DetonateOnAllMapObjects, 0x8)
 
 		const auto originalLocation = pThis->Location;
 		const auto pOriginalTarget = pThis->Target;
-		const auto isFull = pWHExt->DetonateOnAllMapObjects_Full;
-		const auto pOwner = pThis->Owner ? pThis->Owner->Owner : BulletExt::ExtMap.Find(pThis)->FirerHouse;
+		const bool isFull = pWHExt->DetonateOnAllMapObjects_Full;
+		const auto pOwner = pThis->Owner ? pThis->Owner->Owner
+			: BulletExt::ExtMap.Find(pThis)->FirerHouse;
 
-		// 🔁 single reusable snapshot buffer (engine is single-threaded)
-		static std::vector<TechnoClass*> snapshot;
+		// per-call reusable buffer (safe against nested calls)
+		std::vector<TechnoClass*> snapshot;
+		snapshot.reserve(256); // heuristic; grows as needed
+
 		auto fill_and_apply = [&](auto const& dvc)
 			{
 				snapshot.clear();
@@ -95,39 +96,38 @@ DEFINE_HOOK(0x4690C1, BulletClass_Logics_DetonateOnAllMapObjects, 0x8)
 
 				for (auto* const pTechno : snapshot)
 				{
-					if (pWHExt->EligibleForFullMapDetonation(pTechno, pOwner))
+					if (!pTechno) continue;
+					if (!pWHExt->EligibleForFullMapDetonation(pTechno, pOwner))
+						continue;
+
+					const auto coords = pTechno->GetCoords();
+
+					if (isFull)
 					{
-						if (isFull)
-						{
-							pThis->Target = pTechno;
-							pThis->Location = pTechno->GetCoords();
-							pThis->Detonate(pTechno->GetCoords());
-						}
-						else
-						{
-							const int damage = (pThis->Health * pThis->DamageMultiplier) >> 8;
-							pWHExt->DamageAreaWithTarget(
-								pTechno->GetCoords(), damage, pThis->Owner, pThis->WH,
-								true, pOwner, pTechno
-							);
-						}
+						pThis->Target = pTechno;
+						pThis->Location = coords;
+						pThis->Detonate(coords);
+					}
+					else
+					{
+						const int damage = (pThis->Health * pThis->DamageMultiplier) >> 8;
+						pWHExt->DamageAreaWithTarget(
+							coords, damage, pThis->Owner, pThis->WH,
+							true, pOwner, pTechno);
 					}
 				}
 			};
 
 		if ((pWHExt->DetonateOnAllMapObjects_AffectTargets & AffectedTarget::Aircraft) != AffectedTarget::None)
 			fill_and_apply(AircraftClass::Array);
-
 		if ((pWHExt->DetonateOnAllMapObjects_AffectTargets & AffectedTarget::Building) != AffectedTarget::None)
 			fill_and_apply(BuildingClass::Array);
-
 		if ((pWHExt->DetonateOnAllMapObjects_AffectTargets & AffectedTarget::Infantry) != AffectedTarget::None)
 			fill_and_apply(InfantryClass::Array);
-
 		if ((pWHExt->DetonateOnAllMapObjects_AffectTargets & AffectedTarget::Unit) != AffectedTarget::None)
 			fill_and_apply(UnitClass::Array);
 
-		// restore original bullet state + guard
+		// restore
 		pThis->Target = pOriginalTarget;
 		pThis->Location = originalLocation;
 		pWHExt->WasDetonatedOnAllMapObjects = false;

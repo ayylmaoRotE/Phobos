@@ -149,7 +149,7 @@ DEFINE_HOOK(0x43FB23, BuildingClass_AI_Radiation, 0x5)
 	if (pBuilding->Type->ImmuneToRadiation || pBuilding->InLimbo || pBuilding->BeingWarpedOut || pBuilding->TemporalTargetingMe)
 		return 0;
 
-	// Global application delay gate
+	// Global application delay gate (unchanged)
 	if (RulesExt::Global()->UseGlobalRadApplicationDelay)
 	{
 		const int delay = RulesExt::Global()->RadApplicationDelay_Building;
@@ -159,12 +159,7 @@ DEFINE_HOOK(0x43FB23, BuildingClass_AI_Radiation, 0x5)
 
 	const auto buildingCoords = pBuilding->GetMapCoords();
 
-	// NOTE: vanilla code built this every iteration; we still do, but reuse capacity
-	auto& typeMap = RadTmp::GetTypeMap();
-	typeMap.clear();
-	typeMap.reserve(RadTypeClass::Array.size());
-
-	// Count-limiter bookkeeping (kept as-is: behavior unchanged, still not incrementing later)
+	// Track per-site damage count this tick
 	std::unordered_map<RadSiteClass*, int> damageCounts;
 
 	for (auto pFoundation = pBuilding->GetFoundationData(false);
@@ -172,30 +167,32 @@ DEFINE_HOOK(0x43FB23, BuildingClass_AI_Radiation, 0x5)
 	{
 		const auto nCurrentCoord = buildingCoords + *pFoundation;
 		const auto pCell = MapClass::Instance.TryGetCellAt(nCurrentCoord);
-		if (!pCell)
-			continue;
+		if (!pCell) continue;
 
 		const auto pCellExt = CellExt::ExtMap.Find(pCell);
-		const size_t approxSites = pCellExt->RadLevels.size();
 
+		using SiteRec = std::pair<RadSiteClass*, int>;
+		using Bucket = std::pair<RadTypeClass*, std::vector<SiteRec>>;
+		std::vector<Bucket> typeMap;
+		typeMap.reserve(RadTypeClass::Array.size());
+
+		// group this CELL's sites by type
 		for (const auto& [pRadSite, radLevel] : pCellExt->RadLevels)
 		{
-			if (radLevel <= 0)
-				continue;
+			if (radLevel <= 0) continue;
 
-			// Resolve once; used later during damage
 			const auto pRadExt = RadSiteExt::ExtMap.Find(pRadSite);
 			const auto pRadType = pRadExt->Type;
 
-			// Per-site limits (kept identical)
-			const int maxDamageCount = pRadType->GetBuildingDamageMaxCount();
-			if (maxDamageCount > 0 && damageCounts[pRadSite] >= maxDamageCount)
+			// enforce per-site cap
+			const int maxCnt = pRadType->GetBuildingDamageMaxCount();
+			if (maxCnt > 0 && damageCounts[pRadSite] >= maxCnt)
 				continue;
 
 			if (!pRadType->GetWarhead())
 				continue;
 
-			// Per-type delay (when not using global)
+			// per-type delay when not using the global delay
 			if (!RulesExt::Global()->UseGlobalRadApplicationDelay)
 			{
 				const int delay = pRadType->GetBuildingApplicationDelay();
@@ -203,57 +200,60 @@ DEFINE_HOOK(0x43FB23, BuildingClass_AI_Radiation, 0x5)
 					continue;
 			}
 
-			// Find/create bucket for this type
 			auto it = std::find_if(typeMap.begin(), typeMap.end(),
-				[pRadType](const RadTmp::TypeBucket& b) { return b.first == pRadType; });
+				[pRadType](const Bucket& b) { return b.first == pRadType; });
 
 			if (it == typeMap.end())
 			{
-				RadTmp::SiteVec sites;
-				sites.reserve(approxSites);
-				sites.emplace_back(pRadExt, radLevel);
+				std::vector<SiteRec> sites;
+				sites.reserve(pCellExt->RadLevels.size());
+				sites.emplace_back(pRadSite, radLevel);
 				typeMap.emplace_back(pRadType, std::move(sites));
 			}
 			else
 			{
-				it->second.emplace_back(pRadExt, radLevel);
+				it->second.emplace_back(pRadSite, radLevel);
 			}
 		}
-	}
 
-	// Process per-type sites
-	for (auto& [pRadType, sites] : typeMap)
-	{
-		const int radLevelMax = pRadType->GetLevelMax();
-
-		// If sum never reaches cap, we can skip sorting altogether
-		int sum = 0;
-		for (const auto& s : sites) sum += s.second;
-		if (sum > radLevelMax)
+		// process this cell's buckets
+		for (auto& [pRadType, sites] : typeMap)
 		{
-			std::stable_sort(sites.begin(), sites.end(),
-				[](const RadTmp::SitePair& a, const RadTmp::SitePair& b) { return a.second > b.second; });
-		}
+			const int radLevelMax = pRadType->GetLevelMax();
 
-		int radLevelSum = 0;
-		for (const auto& [pSiteExt, radLevel] : sites)
-		{
-			const int remain = radLevelMax - radLevelSum;
-			int damage = static_cast<int>(std::min(radLevel, remain) * pRadType->GetLevelFactor());
+			int sum = 0; for (const auto& s : sites) sum += s.second;
+			if (sum > radLevelMax)
+			{
+				std::stable_sort(sites.begin(), sites.end(),
+					[](const SiteRec& a, const SiteRec& b) { return a.second > b.second; });
+			}
 
-			// same check as before, but with pre-resolved ext
-			if (pBuilding->IsAlive && !pSiteExt->ApplyRadiationDamage(pBuilding, damage))
-				return 0;
+			int radLevelSum = 0;
+			for (const auto& [pRadSite, radLevel] : sites)
+			{
+				const int remain = radLevelMax - radLevelSum;
+				int damage = static_cast<int>(std::min(radLevel, remain) * pRadType->GetLevelFactor());
 
-			if (radLevel >= remain)
-				break;
+				if (pBuilding->IsAlive)
+				{
+					auto* pSiteExt = RadSiteExt::ExtMap.Find(pRadSite);
+					if (!pSiteExt->ApplyRadiationDamage(pBuilding, damage))
+						return 0;
 
-			radLevelSum += radLevel;
+					// enforce per-site max count
+					++damageCounts[pRadSite];
+				}
+
+				if (radLevel >= remain) break;
+				radLevelSum += radLevel;
+			}
 		}
 	}
 
 	return 0;
 }
+
+DEFINE_JUMP(LJMP, 0x4DA554, 0x4DA56E);
 
 // ------------------------------------------------------------
 // Foot radiation application (optimized containers + skip-sort)

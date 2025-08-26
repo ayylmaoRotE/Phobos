@@ -11,6 +11,7 @@
 #include <New/AISell/AIHPSell.h>
 #include <Ext/Rules/Body.h>
 #include <UnitClass.h>
+#include <New/AnonymousType/GiftBoxFunctional.h>
 
 namespace ReceiveDamageTemp
 {
@@ -231,6 +232,24 @@ DEFINE_HOOK(0x701900, TechnoClass_ReceiveDamage_Shield, 0x6)
 			const int applied = damage;        // final, clamped damage for this tick
 			AILowHPSell::ConsiderOnDamage_PreApply(b, prevHP, applied);
 		}
+	}
+
+	// Handle GiftBox TakeDamage
+	auto pTypeExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
+	if (pTypeExt)
+	{
+		DamageState damageState = DamageState::Unaffected;
+		if (damage > 0)
+		{
+			if (pThis->Health <= 0)
+				damageState = DamageState::NowDead;
+			else
+				damageState = DamageState::Unchanged;
+		}
+
+		auto pTechnoExt = TechnoExt::ExtMap.Find(pThis);
+		if (pTechnoExt)
+			GiftBoxFunctional::TakeDamage(pTechnoExt, pTypeExt, args->WH, damageState);
 	}
 
 	return 0;

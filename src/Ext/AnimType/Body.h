@@ -63,6 +63,9 @@ public:
 		ValueableVector<double> LargeFireChances;
 		ValueableVector<double> LargeFireDistances;
 		Nullable<bool> Crater_DestroyTiberium;
+		Valueable<double> ConcurrentChance;
+		ValueableVector<AnimTypeClass*> ConcurrentAnim;
+		ValueableVector<double> ConcurrentChances;
 
 		ExtData(AnimTypeClass* OwnerObject) : Extension<AnimTypeClass>(OwnerObject)
 			, Palette { CustomPalette::PaletteMode::Temperate }
@@ -102,6 +105,9 @@ public:
 			, LargeFireChances {}
 			, LargeFireDistances {}
 			, Crater_DestroyTiberium {}
+			, ConcurrentChance { 0.0 }
+			, ConcurrentAnim {}
+			, ConcurrentChances {}
 		{ }
 
 		virtual ~ExtData() = default;

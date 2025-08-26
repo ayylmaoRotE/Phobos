@@ -25,21 +25,13 @@
 #include <Ext/Rules/Body.h>
 #include <Ext/TechnoType/Body.h>
 
+#include <algorithm> // erase/remove, clamp, max, min
+#include <cmath>     // std::round
+
 static __forceinline bool IsMiner(const UnitClass* u) noexcept
 {
 	const auto t = u->Type;
 	return (t && (t->Harvester || t->Weeder));
-}
-
-
-// stable, single-pass erase of the first matching pointer; preserves order
-template<typename T>
-static __forceinline void stable_erase_first(std::vector<T*>& v, T* value)
-{
-	for (size_t i = 0, n = v.size(); i < n; ++i)
-	{
-		if (v[i] == value) { v.erase(v.begin() + i); return; }
-	}
 }
 
 // TechnoClass_AI_0x6F9E50
@@ -79,13 +71,17 @@ void TechnoExt::ExtData::ApplyInterceptor()
 	const auto pInterceptorType = pTypeExt->InterceptorType.get();
 	if (!pInterceptorType) return;
 
-	// keep current bullet target only if it's a locked bullet
+	// keep current bullet target only if it's LOCKED
 	if (const auto pTarget = pThis->Target)
 	{
 		if (pTarget->WhatAmI() != AbstractType::Bullet)
 			return;
+
 		const auto pTargetExt = BulletExt::ExtMap.Find(static_cast<BulletClass*>(pTarget));
-		if ((pTargetExt->InterceptedStatus & InterceptedStatus::Locked) == InterceptedStatus::None)
+		const bool isLocked = (pTargetExt->InterceptedStatus & InterceptedStatus::Locked) != InterceptedStatus::None;
+
+		// If it's locked, keep it (exit). If it's not locked, fall through and search for a better target.
+		if (isLocked)
 			return;
 	}
 
@@ -109,9 +105,9 @@ void TechnoExt::ExtData::ApplyInterceptor()
 
 	BulletClass* pOptionalTargetBullet = nullptr;
 
-	// If the bullet count is extremely large, we keep cost predictable by skipping the 2nd pass;
-	// we still pick deterministically (first already-targeted candidate).
-	const bool skipSecondPass = (count > 512);
+	// perf guard: skip 2nd pass if bullet count is very high
+	constexpr int kSecondPassSkipThreshold = 512;
+	const bool skipSecondPass = (count > kSecondPassSkipThreshold);
 
 	int i = 0;
 	for (; i < count; ++i)
@@ -314,8 +310,9 @@ void TechnoExt::ExtData::UpdateHarvesterAutoReturn()
 	if (!rules || !rules->Harvester_AutoReturn_Enable)
 		return;
 
+	// If your codebase doesn't have Harvester_AutoReturn_IsSuppressed(), remove this next guard.
 	if (this->Harvester_AutoReturn_IsSuppressed() && rules->Harvester_AutoReturn_SuppressOnStop)
-    return;
+		return;
 
 	const auto mission = pUnit->CurrentMission;
 	if (mission == Mission::Harvest || mission == Mission::Return
@@ -719,21 +716,21 @@ void TechnoExt::ExtData::UpdateTypeData(TechnoTypeClass* pCurrentType)
 	if (pOldTypeExt->AutoDeath_Behavior.isset() && !pNewTypeExt->AutoDeath_Behavior.isset())
 	{
 		auto& vec = ScenarioExt::Global()->AutoDeathObjects;
-		stable_erase_first(vec, this); // was erase(remove(...))
+		vec.erase(std::remove(vec.begin(), vec.end(), this), vec.end());
 	}
 
 	// Remove from harvesters list if no longer a harvester.
 	if (pOldTypeExt->Harvester_Counted && !pNewTypeExt->Harvester_Counted)
 	{
 		auto& vec = HouseExt::ExtMap.Find(pOwner)->OwnedCountedHarvesters;
-		stable_erase_first(vec, pThis); // was erase(remove(...))
+		vec.erase(std::remove(vec.begin(), vec.end(), pThis), vec.end());
 	}
 
 	// Remove from limbo reloaders if no longer applicable
 	if (pOldType->Ammo > 0 && pOldTypeExt->ReloadInTransport && !pNewTypeExt->ReloadInTransport)
 	{
 		auto& vec = ScenarioExt::Global()->TransportReloaders;
-		stable_erase_first(vec, this); // was erase(remove(...))
+		vec.erase(std::remove(vec.begin(), vec.end(), this), vec.end());
 	}
 
 	// Powered by ststl-s, Fly-Star
@@ -945,33 +942,33 @@ void TechnoExt::ExtData::UpdateTypeData(TechnoTypeClass* pCurrentType)
 
 	auto checkWeapon = [&maxCapture, &infiniteCapture, &hasTemporal,
 		&hasAirstrike, &hasLocomotor, &hasParasite](WeaponTypeClass* pWeaponType)
-	{
-		if (!pWeaponType)
-			return;
-
-		const auto pWH = pWeaponType->Warhead;
-
-		if (pWH->MindControl)
 		{
-			if (pWeaponType->Damage > maxCapture)
-				maxCapture = pWeaponType->Damage;
+			if (!pWeaponType)
+				return;
 
-			if (pWeaponType->InfiniteMindControl)
-				infiniteCapture = true;
-		}
+			const auto pWH = pWeaponType->Warhead;
 
-		if (pWH->Temporal)
-			hasTemporal = true;
+			if (pWH->MindControl)
+			{
+				if (pWeaponType->Damage > maxCapture)
+					maxCapture = pWeaponType->Damage;
 
-		if (pWH->Airstrike)
-			hasAirstrike = true;
+				if (pWeaponType->InfiniteMindControl)
+					infiniteCapture = true;
+			}
 
-		if (pWH->IsLocomotor)
-			hasLocomotor = true;
+			if (pWH->Temporal)
+				hasTemporal = true;
 
-		if (pWH->Parasite)
-			hasParasite = true;
-	};
+			if (pWH->Airstrike)
+				hasAirstrike = true;
+
+			if (pWH->IsLocomotor)
+				hasLocomotor = true;
+
+			if (pWH->Parasite)
+				hasParasite = true;
+		};
 
 	for (int i = 0; i < TechnoTypeClass::MaxWeapons; i++)
 	{

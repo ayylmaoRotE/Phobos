@@ -62,7 +62,7 @@ std::vector<AttachEffectTypeClass*> AttachEffectTypeClass::GetTypesFromGroups(co
 		}
 	}
 
-	// 🔒 Determinize: sort by stable key (type name), then dedupe.
+	// Determinize: sort by stable key (type name), then dedupe.
 	std::sort(types.begin(), types.end(),
 		[](const AttachEffectTypeClass* a, const AttachEffectTypeClass* b)
 		{

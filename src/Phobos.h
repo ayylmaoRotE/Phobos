@@ -31,6 +31,7 @@ public:
 	static const char* AppIconPath;
 	static const wchar_t* VersionDescription;
 	static bool DisplayDamageNumbers;
+	static bool DisplayTechnoNames;
 	static bool IsLoadingSaveGame;
 	static bool ShouldSave;
 	static bool WasGameSaved;

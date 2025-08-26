@@ -17,6 +17,7 @@
 #include <Misc/FlyingStrings.h>
 #include <Utilities/Helpers.Alex.h>
 #include <Utilities/EnumFunctions.h>
+#include <Utilities/AresFunctions.h>
 
 #pragma region CreateGap Calls
 
@@ -51,12 +52,13 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 			if (!pHouse->IsControlledByCurrentPlayer() && !pHouse->IsAlliedWith(pCurrent) && !pCurrent->Defeated && !pCurrent->SpySatActive)
 			{
 				Sub_4ADEE0(0, 0);
-				CellRangeIterator<CellClass>{}(CellClass::Coord2Cell(coords), this->CreateGap + 0.5, [](CellClass* pCell) {
-						pCell->Flags &= ~CellFlags::Revealed;
-						pCell->AltFlags &= ~AltCellFlags::Clear;
-						pCell->ShroudCounter = 1;
-						pCell->GapsCoveringThisCell = 0;
-						return true;
+				CellRangeIterator<CellClass>{}(CellClass::Coord2Cell(coords), this->CreateGap + 0.5, [](CellClass* pCell)
+ {
+	 pCell->Flags &= ~CellFlags::Revealed;
+	 pCell->AltFlags &= ~AltCellFlags::Clear;
+	 pCell->ShroudCounter = 1;
+	 pCell->GapsCoveringThisCell = 0;
+	 return true;
 				});
 				Sub_4ADCD0(0, 0);
 				pCurrent->Visionary = 0;
@@ -185,7 +187,8 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 		}
 		else if (pBullet && pBullet->Target)
 		{
-			if (pBullet->DistanceFrom(pBullet->Target) < Unsorted::LeptonsPerCell / 4) {
+			if (pBullet->DistanceFrom(pBullet->Target) < Unsorted::LeptonsPerCell / 4)
+			{
 				switch (pBullet->Target->WhatAmI())
 				{
 				case BuildingClass::AbsID:
@@ -223,19 +226,22 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 		}
 		else if (auto pIntended = this->IntendedTarget)
 		{
-			if (coords.DistanceFrom(pIntended->GetCoords()) < double(Unsorted::LeptonsPerCell / 4)) {
+			if (coords.DistanceFrom(pIntended->GetCoords()) < double(Unsorted::LeptonsPerCell / 4))
+			{
 				this->DetonateOnOneUnit(pHouse, pIntended, pOwner, bulletWasIntercepted);
 
-				if (this->Transact) {
-					const auto NotEligible = [this, pHouse, pOwner](TechnoClass* const pTech) {
-						if (!CanDealDamage(pTech))
-							return true;
+				if (this->Transact)
+				{
+					const auto NotEligible = [this, pHouse, pOwner](TechnoClass* const pTech)
+						{
+							if (!CanDealDamage(pTech))
+								return true;
 
-						if (!pTech->GetTechnoType()->Trainable && this->Transact_Experience_IgnoreNotTrainable)
-							return true;
+							if (!pTech->GetTechnoType()->Trainable && this->Transact_Experience_IgnoreNotTrainable)
+								return true;
 
-						return !CanTargetHouse(pHouse, pTech);
-					};
+							return !CanTargetHouse(pHouse, pTech);
+						};
 
 					std::vector<TechnoClass*> targets = { pIntended };
 					this->TransactOnAllUnits(targets, pHouse, pOwner);
@@ -276,6 +282,9 @@ void WarheadTypeExt::ExtData::DetonateOnOneUnit(HouseClass* pHouse, TechnoClass*
 	if (this->BuildingSell || this->BuildingUndeploy)
 		this->ApplyBuildingUndeploy(pTarget);
 
+	if (this->ReverseEngineer)
+		this->ApplyReverseEngineer(pHouse, pTarget);
+
 #ifdef LOCO_TEST_WARHEADS
 	if (this->InflictLocomotor)
 		this->ApplyLocomotorInfliction(pTarget);
@@ -284,6 +293,12 @@ void WarheadTypeExt::ExtData::DetonateOnOneUnit(HouseClass* pHouse, TechnoClass*
 		this->ApplyLocomotorInflictionReset(pTarget);
 #endif
 
+}
+
+void WarheadTypeExt::ExtData::ApplyReverseEngineer(HouseClass* pHouse, TechnoClass* pTarget)
+{
+	if (pHouse && !pHouse->Type->MultiplayPassive && AresFunctions::ReverseEngineer)
+		AresFunctions::ReverseEngineer(reinterpret_cast<void*>(pHouse->unknown_16084), pTarget->GetTechnoType());
 }
 
 void WarheadTypeExt::ExtData::ApplyBuildingUndeploy(TechnoClass* pTarget)
@@ -330,7 +345,7 @@ void WarheadTypeExt::ExtData::ApplyBuildingUndeploy(TechnoClass* pTarget)
 		const auto pItems = Helpers::Alex::getCellSpreadItems(pBuilding->GetCoords(), 20);
 
 		// Divide the surrounding units into 16 directions and record their costs
-		int record[16] = {0};
+		int record[16] = { 0 };
 
 		for (const auto& pItem : pItems)
 		{
@@ -721,7 +736,7 @@ void WarheadTypeExt::ExtData::ApplyStealMoney(TechnoClass* pOwner, TechnoClass* 
 		auto pOwnerHouse = pOwner->GetOwningHouse();
 		auto pTargetHouse = pTarget->GetOwningHouse();
 
-		if (pOwnerHouse && pTargetHouse && 
+		if (pOwnerHouse && pTargetHouse &&
 			!pOwnerHouse->IsNeutral() && !pTargetHouse->IsNeutral() &&
 			pOwnerHouse != pTargetHouse)
 		{

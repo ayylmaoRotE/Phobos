@@ -24,7 +24,7 @@ public:
 	Valueable<bool> CloakVisible_DetectedOnly;
 	Valueable<bool> DroppodOnly;
 
-	// 🔴 Cached for runtime: avoid per-frame multiply/sqrt in LaserTrailClass::Update
+	// Cached for runtime: avoid per-frame multiply/sqrt in LaserTrailClass::Update
 	int SegmentLengthSq;
 
 	LaserTrailTypeClass(const char* pTitle = NONE_STR) : Enumerable<LaserTrailTypeClass>(pTitle)

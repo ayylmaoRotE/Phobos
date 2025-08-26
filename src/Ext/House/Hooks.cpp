@@ -4,6 +4,8 @@
 #include <Ext/Scenario/Body.h>
 #include "Ext/Techno/Body.h"
 #include "Ext/Building/Body.h"
+#include <Ext/BuildingType/Body.h>
+#include <FactoryClass.h>
 #include <Utilities/Debug.h>
 #include <unordered_map>
 
@@ -15,7 +17,7 @@ DEFINE_HOOK(0x508C30, HouseClass_UpdatePower_UpdateCounter, 0x5)
 	// Reset the cache
 	pHouseExt->PowerPlantEnhancers.clear();
 
-	// Count candidate enhancers per BuildingType by ArrayIndex
+	// 🔧 Optimized: Count candidate enhancers per BuildingType by ArrayIndex
 	const size_t typeCount = static_cast<size_t>(BuildingTypeClass::Array.Count);
 	std::vector<uint16_t> counts(typeCount, 0); // compact and zero-initialized
 
@@ -37,7 +39,7 @@ DEFINE_HOOK(0x508C30, HouseClass_UpdatePower_UpdateCounter, 0x5)
 		}
 	}
 
-	// Populate the associative container only for non-zero indices
+	// 🔧 Optimized: Populate the associative container only for non-zero indices
 	// (avoids creating lots of empty/default nodes)
 	for (size_t i = 0; i < typeCount; ++i)
 	{
@@ -83,7 +85,7 @@ DEFINE_HOOK(0x508D8D, HouseClass_UpdatePower_Techno, 0x6)
 
 	GET(HouseClass*, pThis, ESI);
 
-	// Static caches: only types with non-zero Power
+	// 🔧 Optimized: Static caches - only types with non-zero Power
 	struct NonZeroLists
 	{
 		std::vector<const InfantryTypeClass*>  Inf;
@@ -132,7 +134,7 @@ DEFINE_HOOK(0x508D8D, HouseClass_UpdatePower_Techno, 0x6)
 			}
 		};
 
-	// Only iterate non-zero-power types (much fewer)
+	// 🔧 Optimized: Only iterate non-zero-power types (much fewer)
 	accumulate(nz.Inf);
 	accumulate(nz.Uni);
 	accumulate(nz.Air);
@@ -388,14 +390,14 @@ static inline bool CheckShouldDisableDefensesCameo(HouseClass* pHouse, TechnoTyp
 			}
 
 			auto buildLimitRemaining = [](HouseClass* pHouse, BuildingTypeClass* pBldType)
-			{
-				const auto BuildLimit = pBldType->BuildLimit;
+				{
+					const auto BuildLimit = pBldType->BuildLimit;
 
-				if (BuildLimit >= 0)
-					return BuildLimit - BuildingTypeExt::CountOwnedNowWithDeployOrUpgrade(pBldType, pHouse);
-				else
-					return -BuildLimit - pHouse->CountOwnedEver(pBldType);
-			};
+					if (BuildLimit >= 0)
+						return BuildLimit - BuildingTypeExt::CountOwnedNowWithDeployOrUpgrade(pBldType, pHouse);
+					else
+						return -BuildLimit - pHouse->CountOwnedEver(pBldType);
+				};
 
 			if (buildLimitRemaining(pHouse, pBuildingType) - count <= 0)
 				return true;
@@ -414,7 +416,6 @@ DEFINE_HOOK(0x50B669, HouseClass_ShouldDisableCameo_GreyCameo, 0x5)
 	if (aresDisable || !pType)
 		return 0;
 
-	// Check quick defense limit first; then the full group logic.
 	if (CheckShouldDisableDefensesCameo(pThis, pType) || HouseExt::ReachedBuildLimit(pThis, pType, false))
 		R->EAX(true);
 

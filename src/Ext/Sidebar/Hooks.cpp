@@ -148,54 +148,54 @@ DEFINE_HOOK(0x6A99B7, TabCameoListClass_Draw_SuperDarken, 0x5)
 	{
 		if (auto* const pSW = pPlayer->Supers.GetItem(idxSW))
 		{
+			// Only add *extra* darkening when the SW is already ready.
+			// The engine already shades non-ready SWs.
 			if (pSW->IsReady)
 			{
-				if (auto* const pSWType = pSW->Type)
+				if (auto* const pType = pSW->Type)
 				{
-					// Only add *extra* darkening rules if this SW has an extension
-					if (auto* const pSWExt = SWTypeExt::ExtMap.TryFind(pSWType))
+					if (auto* const pSWExt = SWTypeExt::ExtMap.TryFind(pType))
 					{
-
-						// Requirement 1: Money
-						if (pSWExt->Money_Amount != 0 &&
-							!pSW->Owner->CanTransactMoney(pSWExt->Money_Amount))
+						// Money gate (only if non-zero)
+						if (pSWExt->Money_Amount != 0
+							&& !pSW->Owner->CanTransactMoney(pSWExt->Money_Amount))
 						{
 							darken = true;
 						}
 
-						// Requirement 2/3: Battle / Commander Points
+						// BP/CP gates (only if non-zero and HouseExt exists)
 						if (!darken)
 						{
 							if (auto* const pOwnerExt = HouseExt::ExtMap.TryFind(pSW->Owner))
 							{
-								if (pSWExt->BattlePoints_Amount != 0 &&
-									!pOwnerExt->CanTransactBattlePoints(pSWExt->BattlePoints_Amount))
+								if (pSWExt->BattlePoints_Amount != 0
+									&& !pOwnerExt->CanTransactBattlePoints(pSWExt->BattlePoints_Amount))
 								{
 									darken = true;
 								}
-								if (!darken && pSWExt->CommanderPoints_Amount != 0 &&
-									!pOwnerExt->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount))
+								if (!darken
+									&& pSWExt->CommanderPoints_Amount != 0
+									&& !pOwnerExt->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount))
 								{
 									darken = true;
 								}
 							}
-							// if no HouseExt, don't force-darken; just skip extra gating
+							// No HouseExt? Don’t force-darken—just skip BP/CP gating.
 						}
 
-						// Requirement 4: AuxTechnos / custom availability
+						// AuxTechnos / custom availability
 						if (!darken && !pSWExt->IsAvailable(pSW->Owner))
 						{
 							darken = true;
 						}
 					}
-					// else: no SWTypeExt — don’t add extra darkening; leave ready SW clickable
+					// No SWTypeExt: leave vanilla behavior (don’t force-darken).
 				}
 			}
-			// else: not ready — base engine already darkens as needed
 		}
 	}
 
-	// BL = darken flag (engine shades the cameo & disables click when true)
+	// BL = darken flag; engine uses it to shade & disable the cameo
 	R->BL(darken);
 	return 0;
 }

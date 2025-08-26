@@ -49,7 +49,7 @@ void LaserTrailTypeClass::LoadFromINI(CCINIClass* pINI)
 	this->CloakVisible_DetectedOnly.Read(exINI, section, "CloakVisible.DetectedOnly");
 	this->DroppodOnly.Read(exINI, section, "DropPodOnly");
 
-	// 🔴 cache derived value for runtime hotpath
+	// cache derived value for runtime hotpath
 	const int seg = this->SegmentLength;
 	this->SegmentLengthSq = seg * seg;
 }
