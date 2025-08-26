@@ -73,7 +73,9 @@ DEFINE_HOOK(0x417FF1, AircraftClass_Mission_Attack_StrafeShots, 0x6)
 	// No need to evaluate this before any strafing shots have been fired.
 	if (pExt->Strafe_BombsDroppedThisRound)
 	{
-		auto const pWeapon = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex)->WeaponType;
+		auto pWeaponObj = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex);
+		if (!pWeaponObj) return 0;
+		auto const pWeapon = pWeaponObj->WeaponType;
 		auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
 		int const strafingShots = pWeaponExt->Strafing_Shots.Get(5);
 
@@ -99,7 +101,11 @@ DEFINE_HOOK(0x4197FC, AircraftClass_GetFireLocation_WeaponRange, 0x6)
 	GET(AircraftClass*, pThis, EDI);
 
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
-	R->EAX(pThis->GetWeaponRange(pExt->CurrentAircraftWeaponIndex));
+	if (pExt->CurrentAircraftWeaponIndex < 0) {
+		R->EAX(0);
+	} else {
+		R->EAX(pThis->GetWeaponRange(pExt->CurrentAircraftWeaponIndex));
+	}
 
 	return SkipGameCode;
 }
@@ -134,9 +140,12 @@ long __stdcall AircraftClass_IFlyControl_IsStrafe(IFlyControl const* ifly)
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
 	WeaponTypeClass* pWeapon = nullptr;
 
-	pWeapon = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex)->WeaponType;
 	if (pExt->CurrentAircraftWeaponIndex >= 0)
-		pWeapon = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex)->WeaponType;
+	{
+		auto pWeaponObj = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex);
+		if (pWeaponObj)
+			pWeapon = pWeaponObj->WeaponType;
+	}
 	else if (pThis->Target)
 	{
 		// 🔫 Optimized: Use cached weapon index instead of repeated SelectWeapon calls
@@ -171,7 +180,13 @@ DEFINE_HOOK(0x4180F4, AircraftClass_Mission_Attack_WeaponRange, 0x5)
 
 	GET(AircraftClass*, pThis, ESI);
 
-	R->EAX(pThis->GetWeapon(TechnoExt::ExtMap.Find(pThis)->CurrentAircraftWeaponIndex)->WeaponType);
+	auto pExt = TechnoExt::ExtMap.Find(pThis);
+	if (pExt->CurrentAircraftWeaponIndex < 0) {
+		R->EAX<WeaponTypeClass*>(nullptr);
+	} else {
+		auto pWeaponObj = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex);
+		R->EAX<WeaponTypeClass*>(pWeaponObj ? pWeaponObj->WeaponType : nullptr);
+	}
 
 	return SkipGameCode;
 }
@@ -325,6 +340,10 @@ DEFINE_HOOK(0x418B8A, AircraftClass_Mission_Attack_Delay5, 0x6)
 DEFINE_HOOK(0x417A2E, AircraftClass_EnterIdleMode_Opentopped, 0x5)
 {
 	GET(AircraftClass*, pThis, ESI);
+
+	// Safety check - ensure we have a valid aircraft pointer and type
+	if (!pThis || !pThis->Type)
+		return 0x417AD4;
 
 	R->EDI(2);
 
