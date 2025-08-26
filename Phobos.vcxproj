@@ -18,13 +18,22 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Ext\Beacon\Hooks.Beacon.cpp" />
     <ClCompile Include="src\Ext\Infantry\Hooks.cpp" />
     <ClCompile Include="src\Ext\Infantry\Hooks.Firing.cpp" />
+    <ClCompile Include="src\Ext\Sidebar\Seatbelt.cpp" />
+    <ClCompile Include="src\Ext\Sidebar\SWSidebar\UISafeOps.cpp" />
+    <ClCompile Include="src\Ext\TechnoType\Hooks.BuildTime.cpp" />
     <ClCompile Include="src\Ext\TechnoType\Hooks.MultiWeapon.cpp" />
+    <ClCompile Include="src\Ext\Techno\Hooks.ManualOrders.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Targeting.cpp" />
     <ClCompile Include="src\Ext\Unit\Hooks.Firing.cpp" />
     <ClCompile Include="src\Ext\EBolt\Body.cpp" />
     <ClCompile Include="src\Ext\EBolt\Hooks.cpp" />
+    <ClCompile Include="src\Misc\AnimationBudget.cpp" />
+    <ClCompile Include="src\Misc\BeaconTTL.cpp" />
+    <ClCompile Include="src\New\AISell\AICaptureSell.cpp" />
+    <ClCompile Include="src\New\AISell\AIHPSell.cpp" />
     <ClCompile Include="src\New\Type\Affiliated\CreateUnitTypeClass.cpp" />
     <ClCompile Include="src\Blowfish\blowfish.cpp" />
     <ClCompile Include="src\Blowfish\Hooks.Blowfish.cpp" />
@@ -222,6 +231,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Ext\EBolt\Body.h" />
+    <ClInclude Include="src\Ext\Sidebar\SWSidebar\UISafeOps.h" />
+    <ClInclude Include="src\Misc\AnimationBudget.h" />
+    <ClInclude Include="src\Misc\BeaconTTL.h" />
+    <ClInclude Include="src\New\AISell\AICaptureSell.h" />
+    <ClInclude Include="src\New\AISell\AIHPSell.h" />
     <ClInclude Include="src\New\Type\Affiliated\CreateUnitTypeClass.h" />
     <ClInclude Include="src\Blowfish\blowfish.h" />
     <ClInclude Include="src\Ext\Cell\Body.h" />

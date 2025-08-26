@@ -10,12 +10,43 @@
 #include <Ext/Rules/Body.h>
 #include <Utilities/GeneralUtils.h>
 
+
 namespace TerrainTypeTemp
 {
 	TerrainTypeClass* pCurrentType = nullptr;
 	TerrainTypeExt::ExtData* pCurrentExt = nullptr;
 	double PriorHealthRatio = 0.0;
 }
+
+namespace
+{
+	// Cache offsets per radius; filled on first use
+	const std::vector<CellStruct>& AdjacentCellsCached(int radius)
+	{
+		static std::unordered_map<int, std::vector<CellStruct>> cache;
+		auto it = cache.find(radius);
+		if (it != cache.end()) return it->second;
+
+		auto [ins, _] = cache.emplace(radius, GeneralUtils::AdjacentCellsInRange(radius));
+		return ins->second;
+	}
+
+	// RAII guard for TerrainTypeTemp context (prevents leaks on early returns)
+	struct TerrainCtxGuard
+	{
+		TerrainCtxGuard(TerrainTypeClass* t, TerrainTypeExt::ExtData* e)
+		{
+			TerrainTypeTemp::pCurrentType = t;
+			TerrainTypeTemp::pCurrentExt = e;
+		}
+		~TerrainCtxGuard()
+		{
+			TerrainTypeTemp::pCurrentType = nullptr;
+			TerrainTypeTemp::pCurrentExt = nullptr;
+		}
+	};
+}
+
 
 DEFINE_HOOK(0x71C84D, TerrainClass_AI_Animated, 0x6)
 {
@@ -44,7 +75,9 @@ DEFINE_HOOK(0x71C84D, TerrainClass_AI_Animated, 0x6)
 				TerrainTypeTemp::pCurrentType = pType;
 				TerrainTypeTemp::pCurrentExt = pTypeExt;
 
-				for (int i = 0; i < cellCount; i++)
+				TerrainCtxGuard _ctx { pType, pTypeExt };
+
+				for (int i = 0; i < cellCount; ++i)
 					pCell->SpreadTiberium(true);
 
 				// Unset context for CellClass hooks.
@@ -189,28 +222,28 @@ DEFINE_HOOK(0x48381D, CellClass_SpreadTiberium_CellSpread, 0x6)
 
 		TiberiumClass* pTib = TiberiumClass::Array.GetItem(tibIndex);
 
-		std::vector<CellStruct> adjacentCells = GeneralUtils::AdjacentCellsInRange(TerrainTypeTemp::pCurrentExt->SpawnsTiberium_Range);
-		const size_t size = adjacentCells.size();
-		const int rand = ScenarioClass::Instance->Random.RandomRanged(0, size - 1);
+		const auto& adjacentCells = AdjacentCellsCached(TerrainTypeTemp::pCurrentExt->SpawnsTiberium_Range);
+		const size_t count = adjacentCells.size();
+		if (count == 0) { return NoSpreadReturn; }
 
-		for (unsigned int i = 0; i < size; i++)
+		const size_t start = static_cast<size_t>(ScenarioClass::Instance->Random.RandomRanged(0, static_cast<int>(count - 1)));
+
+		for (size_t i = 0; i < count; ++i)
 		{
-			const unsigned int cellIndex = (i + rand) % size;
+			const size_t cellIndex = (start + i) % count;
 			const CellStruct tgtPos = pThis->MapCoords + adjacentCells[cellIndex];
-			CellClass* tgtCell = MapClass::Instance.TryGetCellAt(tgtPos);
-
-			if (tgtCell && tgtCell->CanTiberiumGerminate(pTib))
+			if (auto* const tgtCell = MapClass::Instance.TryGetCellAt(tgtPos))
 			{
-				R->EAX<bool>(tgtCell->IncreaseTiberium(tibIndex,
-					TerrainTypeTemp::pCurrentExt->GetTiberiumGrowthStage()));
-
-				return SpreadReturn;
+				if (tgtCell->CanTiberiumGerminate(pTib))
+				{
+					R->EAX<bool>(tgtCell->IncreaseTiberium(
+						tibIndex, TerrainTypeTemp::pCurrentExt->GetTiberiumGrowthStage()));
+					return SpreadReturn;
+				}
 			}
 		}
-
 		return NoSpreadReturn;
 	}
-
 	return 0;
 }
 

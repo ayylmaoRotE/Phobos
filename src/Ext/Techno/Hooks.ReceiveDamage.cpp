@@ -8,7 +8,9 @@
 #include <Ext/WeaponType/Body.h>
 #include <Ext/TEvent/Body.h>
 #include <Ext/House/Body.h>
-#include <New/AnonymousType/GiftBoxFunctional.h>
+#include <New/AISell/AIHPSell.h>
+#include <Ext/Rules/Body.h>
+#include <UnitClass.h>
 
 namespace ReceiveDamageTemp
 {
@@ -33,6 +35,26 @@ DEFINE_HOOK(0x701900, TechnoClass_ReceiveDamage_Shield, 0x6)
 	}
 
 	const auto pExt = TechnoExt::ExtMap.Find(pThis);
+
+	if (auto* const u = abstract_cast<UnitClass*>(pThis))
+	{
+		const auto t = u->Type;
+		if (t && (t->Harvester || t->Weeder))
+		{
+			if (const auto rules = RulesExt::Global())
+			{
+				const int hold = std::max(0, rules->Harvester_AutoReturn_OutOfCombatTicks.Get());
+				if (hold > 0)
+				{
+					if (auto* const ext = TechnoExt::ExtMap.Find(u))
+					{
+						ext->Harvester_AutoReturn_CombatTimer.Start(hold);
+					}
+				}
+			}
+		}
+	}
+
 	const auto pSourceHouse = args->SourceHouse;
 	const auto pTargetHouse = pThis->Owner;
 
@@ -201,22 +223,14 @@ DEFINE_HOOK(0x701900, TechnoClass_ReceiveDamage_Shield, 0x6)
 		}
 	}
 
-	// Handle GiftBox TakeDamage
-	auto pTypeExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
-	if (pTypeExt)
+	if (damage > 0)
 	{
-		DamageState damageState = DamageState::Unaffected;
-		if (damage > 0)
+		if (auto* b = abstract_cast<BuildingClass*>(pThis))
 		{
-			if (pThis->Health <= 0)
-				damageState = DamageState::NowDead;
-			else
-				damageState = DamageState::Unchanged;
+			const int prevHP = b->Health;      // HP before engine subtracts damage
+			const int applied = damage;        // final, clamped damage for this tick
+			AILowHPSell::ConsiderOnDamage_PreApply(b, prevHP, applied);
 		}
-		
-		auto pTechnoExt = TechnoExt::ExtMap.Find(pThis);
-		if (pTechnoExt)
-			GiftBoxFunctional::TakeDamage(pTechnoExt, pTypeExt, args->WH, damageState);
 	}
 
 	return 0;
@@ -387,11 +401,14 @@ DEFINE_HOOK(0x701E18, TechnoClass_ReceiveDamage_ReflectDamage, 0x7)
 		return 0;
 
 	auto const pWHExt = WarheadTypeExt::ExtMap.Find(pWarhead);
-
 	if (pWHExt->Reflected)
 		return 0;
 
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
+	
+	if (!pExt->AE.ReflectDamage || pExt->AttachedEffects.empty())
+		return 0;
+
 	auto& random = ScenarioClass::Instance->Random;
 	const auto& suppressType = pWHExt->SuppressReflectDamage_Types;
 	const auto& suppressGroup = pWHExt->SuppressReflectDamage_Groups;

@@ -78,75 +78,62 @@ DEFINE_HOOK(0x4690C1, BulletClass_Logics_DetonateOnAllMapObjects, 0x8)
 		&& pWHExt->DetonateOnAllMapObjects_AffectHouses != AffectedHouse::None)
 	{
 		pWHExt->WasDetonatedOnAllMapObjects = true;
-		auto const originalLocation = pThis->Location;
-		auto const pOriginalTarget = pThis->Target;
-		auto const isFull = pWHExt->DetonateOnAllMapObjects_Full;
-		auto const pOwner = pThis->Owner ? pThis->Owner->Owner : BulletExt::ExtMap.Find(pThis)->FirerHouse;
 
-		auto copy_dvc = []<typename T>(const DynamicVectorClass<T>&dvc)
-		{
-			std::vector<T> vec(dvc.Count);
-			std::copy(dvc.begin(), dvc.end(), vec.begin());
-			return vec;
-		};
+		const auto originalLocation = pThis->Location;
+		const auto pOriginalTarget = pThis->Target;
+		const auto isFull = pWHExt->DetonateOnAllMapObjects_Full;
+		const auto pOwner = pThis->Owner ? pThis->Owner->Owner : BulletExt::ExtMap.Find(pThis)->FirerHouse;
 
-		auto tryDetonate = [pThis, pWHExt, pOwner, isFull](TechnoClass* pTechno)
+		// 🔁 single reusable snapshot buffer (engine is single-threaded)
+		static std::vector<TechnoClass*> snapshot;
+		auto fill_and_apply = [&](auto const& dvc)
 			{
-				if (pWHExt->EligibleForFullMapDetonation(pTechno, pOwner))
+				snapshot.clear();
+				snapshot.reserve(dvc.Count);
+				for (auto it = dvc.begin(); it != dvc.end(); ++it)
+					snapshot.push_back(*it);
+
+				for (auto* const pTechno : snapshot)
 				{
-					if (isFull)
+					if (pWHExt->EligibleForFullMapDetonation(pTechno, pOwner))
 					{
-						pThis->Target = pTechno;
-						pThis->Location = pTechno->GetCoords();
-						pThis->Detonate(pTechno->GetCoords());
-					}
-					else
-					{
-						int damage = (pThis->Health * pThis->DamageMultiplier) >> 8;
-						pWHExt->DamageAreaWithTarget(pTechno->GetCoords(), damage, pThis->Owner, pThis->WH, true, pOwner, pTechno);
+						if (isFull)
+						{
+							pThis->Target = pTechno;
+							pThis->Location = pTechno->GetCoords();
+							pThis->Detonate(pTechno->GetCoords());
+						}
+						else
+						{
+							const int damage = (pThis->Health * pThis->DamageMultiplier) >> 8;
+							pWHExt->DamageAreaWithTarget(
+								pTechno->GetCoords(), damage, pThis->Owner, pThis->WH,
+								true, pOwner, pTechno
+							);
+						}
 					}
 				}
 			};
 
 		if ((pWHExt->DetonateOnAllMapObjects_AffectTargets & AffectedTarget::Aircraft) != AffectedTarget::None)
-		{
-			auto const aircraft = copy_dvc(AircraftClass::Array);
-
-			for (auto const pAircraft : aircraft)
-				tryDetonate(pAircraft);
-		}
+			fill_and_apply(AircraftClass::Array);
 
 		if ((pWHExt->DetonateOnAllMapObjects_AffectTargets & AffectedTarget::Building) != AffectedTarget::None)
-		{
-			auto const buildings = copy_dvc(BuildingClass::Array);
-
-			for (auto const pBuilding : buildings)
-				tryDetonate(pBuilding);
-		}
+			fill_and_apply(BuildingClass::Array);
 
 		if ((pWHExt->DetonateOnAllMapObjects_AffectTargets & AffectedTarget::Infantry) != AffectedTarget::None)
-		{
-			auto const infantry = copy_dvc(InfantryClass::Array);
-
-			for (auto const pInf : infantry)
-				tryDetonate(pInf);
-		}
+			fill_and_apply(InfantryClass::Array);
 
 		if ((pWHExt->DetonateOnAllMapObjects_AffectTargets & AffectedTarget::Unit) != AffectedTarget::None)
-		{
-			auto const units = copy_dvc(UnitClass::Array);
+			fill_and_apply(UnitClass::Array);
 
-			for (auto const pUnit : units)
-				tryDetonate(pUnit);
-		}
-
+		// restore original bullet state + guard
 		pThis->Target = pOriginalTarget;
 		pThis->Location = originalLocation;
 		pWHExt->WasDetonatedOnAllMapObjects = false;
 
 		return ReturnFromFunction;
 	}
-
 	return 0;
 }
 

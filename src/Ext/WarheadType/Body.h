@@ -208,10 +208,6 @@ public:
 		Valueable<double> AffectsAbovePercent;
 		Valueable<bool> AffectsNeutral;
 
-		Valueable<bool> ReverseEngineer;
-
-		Valueable<bool> CanKill;
-
 		// Ares tags
 		// http://ares-developers.github.io/Ares-docs/new/warheads/general.html
 		Valueable<bool> AffectsEnemies;
@@ -231,10 +227,9 @@ public:
 		bool HealthCheck;
 		TechnoClass* DamageAreaTarget;
 
+		Valueable<bool> CanKill;
+
 		std::map<std::string, AnimTypeClass*> ArmorHitAnim;
-		// Stable storage for dynamic HitAnim serialization using parallel vectors
-		std::vector<std::string> ArmorNames;
-		std::vector<std::string> AnimIDs;
 		static std::map<std::string, std::string> ArmorTypeInheritance; // maps custom armor -> base armor
 
 	private:
@@ -441,8 +436,6 @@ public:
 			, KillWeapon_OnFirer_AffectsHouses { AffectedHouse::All }
 			, KillWeapon_Affects { AffectedTarget::All }
 			, KillWeapon_OnFirer_Affects { AffectedTarget::All }
-
-			, ReverseEngineer { false }
 		{ }
 
 		void ApplyConvert(HouseClass* pHouse, TechnoClass* pTarget);
@@ -457,8 +450,6 @@ public:
 		AnimTypeClass* GetArmorHitAnim(Armor armor) const;
 		AnimTypeClass* GetArmorHitAnim(const char* armorName) const;
 		AnimTypeClass* GetArmorHitAnimWithFallback(const char* armorName) const;
-		void StoreArmorHitAnimIDs();
-		void ReconstructArmorHitAnimFromIDs();
 		
 		static void LoadArmorTypeInheritance(CCINIClass* pINI);
 	static void ReloadAllHitAnimData(CCINIClass* pINI);
@@ -487,7 +478,6 @@ public:
 		void ApplyAttachEffects(TechnoClass* pTarget, HouseClass* pInvokerHouse, TechnoClass* pInvoker);
 		void ApplyStealMoney(TechnoClass* pOwner, TechnoClass* pTarget) const;
 		void ApplyBuildingUndeploy(TechnoClass* pTarget);
-		void ApplyReverseEngineer(HouseClass* pHouse, TechnoClass* pTarget);
 		double GetCritChance(TechnoClass* pFirer) const;
 		
 		// Transact.cpp

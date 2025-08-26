@@ -12,17 +12,7 @@
 #include <PlanningTokenClass.h>
 #include <algorithm> // swap-erase helper
 
-// stable, single-pass erase of the first matching pointer; preserves order
-template<typename T>
-static __forceinline void stable_erase_first(std::vector<T*>& v, T* value)
-{
-	for (size_t i = 0, n = v.size(); i < n; ++i)
-	{
-		if (v[i] == value) { v.erase(v.begin() + i); return; }
-	}
-}
-
-// 🔧 Optimized: Small deterministic swap-erase. Order is not semantically used for RestrictedFactoryPlants.
+// Small deterministic swap-erase. Order is not semantically used for RestrictedFactoryPlants.
 template<typename TCont, typename TValue>
 __forceinline void swap_erase_first(TCont& v, const TValue& value)
 {
@@ -61,41 +51,63 @@ DEFINE_HOOK(0x4403D4, BuildingClass_AI_ChronoSparkle, 0x6)
 
 	GET(BuildingClass*, pThis, ESI);
 
-	if (RulesClass::Instance->ChronoSparkle1)
+	auto* const rules = RulesClass::Instance;
+	if (!rules->ChronoSparkle1)
+		return SkipGameCode;
+
+	const auto displayPositions = RulesExt::Global()->ChronoSparkleBuildingDisplayPositions;
+	auto* const pType = pThis->Type;
+	const bool displayOnBuilding = (displayPositions & ChronoSparkleDisplayPosition::Building) != ChronoSparkleDisplayPosition::None;
+	const bool displayOnSlots = (displayPositions & ChronoSparkleDisplayPosition::OccupantSlots) != ChronoSparkleDisplayPosition::None;
+	const bool displayOnOccupants = (displayPositions & ChronoSparkleDisplayPosition::Occupants) != ChronoSparkleDisplayPosition::None;
+
+	const int delay = RulesExt::Global()->ChronoSparkleDisplayDelay;
+	const int occupantCount = displayOnSlots ? pType->MaxNumberOccupants : pThis->GetOccupantCount();
+	const bool showOccupy = (occupantCount > 0) && (displayOnOccupants || displayOnSlots);
+
+	if (showOccupy)
 	{
-		auto const displayPositions = RulesExt::Global()->ChronoSparkleBuildingDisplayPositions;
-		auto const pType = pThis->Type;
-		const bool displayOnBuilding = (displayPositions & ChronoSparkleDisplayPosition::Building) != ChronoSparkleDisplayPosition::None;
-		const bool displayOnSlots = (displayPositions & ChronoSparkleDisplayPosition::OccupantSlots) != ChronoSparkleDisplayPosition::None;
-		const bool displayOnOccupants = (displayPositions & ChronoSparkleDisplayPosition::Occupants) != ChronoSparkleDisplayPosition::None;
-		const int occupantCount = displayOnSlots ? pType->MaxNumberOccupants : pThis->GetOccupantCount();
-		const bool showOccupy = occupantCount && (displayOnOccupants || displayOnSlots);
+		const CoordStruct renderCoords = pThis->GetRenderCoords();
+		// vanilla used the ext vector only when MaxNumberOccupants > 10; preserve that
+		auto const* const pTypeExt = (pType->MaxNumberOccupants <= 10) ? nullptr : BuildingTypeExt::ExtMap.Find(pType);
+		const bool useTypeArray = (pTypeExt == nullptr);
 
-		if (showOccupy)
+		const Point2D* const flashesType = pType->MuzzleFlash; // fixed array in vanilla
+		const int maxFlashes = useTypeArray
+			? pType->MaxNumberOccupants
+			: static_cast<int>(pTypeExt->OccupierMuzzleFlashes.size());
+
+		// Clamp to available data to avoid any accidental OOB while keeping determinism
+		const int count = (occupantCount < maxFlashes) ? occupantCount : maxFlashes;
+
+		const int frame = Unsorted::CurrentFrame;
+		auto* const tact = TacticalClass::Instance;
+
+		for (int i = 0; i < count; ++i)
 		{
-			auto const renderCoords = pThis->GetRenderCoords();
-
-			for (int i = 0; i < occupantCount; i++)
+			// identical cadence: spawn when (frame + i) % delay == 0
+			if (((frame + i) % delay) == 0)
 			{
-				if (!((Unsorted::CurrentFrame + i) % RulesExt::Global()->ChronoSparkleDisplayDelay))
-				{
-					auto const muzzleOffset = pType->MaxNumberOccupants <= 10 ? pType->MuzzleFlash[i] : BuildingTypeExt::ExtMap.Find(pType)->OccupierMuzzleFlashes.at(i);
-					auto coords = CoordStruct::Empty;
-					auto offset = TacticalClass::Instance->ApplyMatrix_Pixel(muzzleOffset);
-					coords.X += offset.X;
-					coords.Y += offset.Y;
-					coords += renderCoords;
+				const Point2D muzzle = useTypeArray
+					? flashesType[i]
+					: pTypeExt->OccupierMuzzleFlashes[i]; // operator[] (no bounds checks in hot path)
 
-					GameCreate<AnimClass>(RulesClass::Instance->ChronoSparkle1, coords)->ZAdjust = -200;
+				CoordStruct coords = renderCoords;
+				const auto px = tact->ApplyMatrix_Pixel(muzzle);
+				coords.X += px.X; coords.Y += px.Y;
+
+				if (auto* const a = GameCreate<AnimClass>(rules->ChronoSparkle1, coords))
+				{
+					a->ZAdjust = -200;
 				}
 			}
 		}
+	}
 
-		if ((!showOccupy || displayOnBuilding) && !(Unsorted::CurrentFrame % RulesExt::Global()->ChronoSparkleDisplayDelay))
-		{
-			GameCreate<AnimClass>(RulesClass::Instance->ChronoSparkle1, pThis->GetCenterCoords());
-		}
-
+	// building-center sparkle (unchanged semantics)
+	if ((!showOccupy || displayOnBuilding) && ((Unsorted::CurrentFrame % delay) == 0))
+	{
+		GameCreate<AnimClass>(rules->ChronoSparkle1, pThis->GetCenterCoords());
 	}
 
 	return SkipGameCode;
@@ -111,9 +123,10 @@ DEFINE_HOOK(0x443C81, BuildingClass_ExitObject_InitialClonedHealth, 0x7)
 	{
 		if (pBuilding && pBuilding->Type->Cloning)
 		{
-			const double percentage = GeneralUtils::GetRangedRandomOrSingleValue(BuildingTypeExt::ExtMap.Find(pBuilding->Type)->InitialStrength_Cloning);
+			const double pct = GeneralUtils::GetRangedRandomOrSingleValue(
+				BuildingTypeExt::ExtMap.Find(pBuilding->Type)->InitialStrength_Cloning);
 			const int health = pInf->Type->Strength;
-			const int strength = Math::clamp(static_cast<int>(health * percentage), 1, health);
+			const int strength = Math::clamp(static_cast<int>(health * pct), 1, health);
 			pInf->Health = strength;
 			pInf->EstimatedHealth = strength;
 		}
@@ -154,9 +167,8 @@ DEFINE_HOOK(0x44CEEC, BuildingClass_Mission_Missile_EMPulseSelectWeapon, 0x6)
 
 	GET(BuildingClass*, pThis, ESI);
 
-	int weaponIndex = 0;
+	int weaponIndexLocal = 0;
 	auto const pExt = BuildingExt::ExtMap.Find(pThis);
-
 	if (!pExt->EMPulseSW)
 		return 0;
 
@@ -165,20 +177,17 @@ DEFINE_HOOK(0x44CEEC, BuildingClass_Mission_Missile_EMPulseSelectWeapon, 0x6)
 
 	if (pSWExt->EMPulse_WeaponIndex >= 0)
 	{
-		weaponIndex = pSWExt->EMPulse_WeaponIndex;
+		weaponIndexLocal = pSWExt->EMPulse_WeaponIndex;
 	}
 	else
 	{
-		auto const pCell = MapClass::Instance.TryGetCellAt(pOwner->EMPTarget);
-
-		if (pCell)
+		if (auto const pCell = MapClass::Instance.TryGetCellAt(pOwner->EMPTarget))
 		{
 			AbstractClass* pTarget = pCell;
-
 			if (auto const pObject = pCell->GetContent())
 				pTarget = pObject;
 
-			weaponIndex = pThis->SelectWeapon(pTarget);
+			weaponIndexLocal = pThis->SelectWeapon(pTarget);
 		}
 	}
 
@@ -190,24 +199,22 @@ DEFINE_HOOK(0x44CEEC, BuildingClass_Mission_Missile_EMPulseSelectWeapon, 0x6)
 		if (pHouseExt->SuspendedEMPulseSWs.count(index))
 		{
 			auto& super = pOwner->Supers;
-
 			for (auto const& swidx : pHouseExt->SuspendedEMPulseSWs[index])
 			{
 				super[swidx]->IsSuspended = false;
 			}
-
 			pHouseExt->SuspendedEMPulseSWs[index].clear();
 			pHouseExt->SuspendedEMPulseSWs.erase(index);
 		}
 	}
 
 	pExt->EMPulseSW = nullptr;
-	EMPulseCannonTemp::weaponIndex = weaponIndex;
-	R->EAX(pThis->GetWeapon(weaponIndex));
+	EMPulseCannonTemp::weaponIndex = weaponIndexLocal;
+	R->EAX(pThis->GetWeapon(weaponIndexLocal));
 	return SkipGameCode;
 }
 
-CoordStruct* __fastcall BuildingClass_GetFireCoords_Wrapper(BuildingClass* pThis, void* _, CoordStruct* pCrd, int weaponIndex)
+CoordStruct* __fastcall BuildingClass_GetFireCoords_Wrapper(BuildingClass* pThis, void* _, CoordStruct* pCrd, int /*weaponIndex*/)
 {
 	auto coords = MapClass::Instance.GetCellAt(pThis->Owner->EMPTarget)->GetCellCoords();
 	pCrd = pThis->GetFLH(&coords, EMPulseCannonTemp::weaponIndex, *pCrd);
@@ -222,7 +229,6 @@ DEFINE_HOOK(0x44D455, BuildingClass_Mission_Missile_EMPulseBulletWeapon, 0x8)
 	GET_STACK(BulletClass*, pBullet, STACK_OFFSET(0xF0, -0xA4));
 
 	pBullet->SetWeaponType(pWeapon);
-
 	return 0;
 }
 
@@ -230,61 +236,26 @@ DEFINE_HOOK(0x44D455, BuildingClass_Mission_Missile_EMPulseBulletWeapon, 0x8)
 
 #pragma region KickOutStuckUnits
 
-DEFINE_HOOK(0x44955D, BuildingClass_WeaponFactoryOutsideBusy_WeaponFactoryCell, 0x6)
+// Kick out stuck units when the factory building is not busy, only factory buildings can enter this hook
+DEFINE_HOOK(0x450248, BuildingClass_UpdateFactory_KickOutStuckUnits, 0x6)
 {
-	enum { NotBusy = 0x44969B };
+	GET(BuildingClass*, pThis, ESI);
 
-	GET(BuildingClass* const, pThis, ESI);
-
-	const auto pLink = pThis->GetNthLink();
-
-	if (!pLink)
-		return NotBusy;
-
-	const auto pLinkType = pLink->GetTechnoType();
-
-	if (pLinkType->JumpJet && pLinkType->BalloonHover)
-		return NotBusy;
-
-	return 0;
-}
-
-// Attempt to kick the stuck unit out again by setting the destination
-DEFINE_HOOK(0x44E202, BuildingClass_Mission_Unload_CheckStuck, 0x6)
-{
-	enum { Waiting = 0x44E267, NextStatus = 0x44E20C};
-
-	GET(BuildingClass*, pThis, EBP);
-
-	if (!pThis->IsTether)
-		return NextStatus;
-
-	if (const auto pUnit = abstract_cast<UnitClass*>(pThis->GetNthLink()))
+	// Check every 15 frames for factories (original cadence preserved)
+	if ((Unsorted::CurrentFrame % 15) == 0)
 	{
-		// Detecting movement status
-		if (pUnit->Locomotor->Destination() == CoordStruct::Empty)
-		{
-			// Evacuate the congestion at the entrance
-			reinterpret_cast<void(__thiscall*)(BuildingClass*)>(0x449540)(pThis);
-			const auto pType = pThis->Type;
-			const auto cell = pThis->GetMapCoords() + pType->FoundationOutside[10];
-			const auto door = cell - CellStruct { 1, 0 };
-			const auto pDest = MapClass::Instance.GetCellAt(door);
+		const auto* const pType = pThis->Type;
+		if (pType->Factory != AbstractType::UnitType || !pType->WeaponsFactory || pType->Naval)
+			return 0;
+		if (pThis->QueuedMission == Mission::Unload)
+			return 0;
 
-			// Hover units may stop one cell behind their destination, should forcing them to advance one more cell
-			pUnit->SetDestination((pUnit->Destination != pDest ? pDest : MapClass::Instance.GetCellAt(cell)), true);
-		}
+		const auto mission = pThis->CurrentMission;
+		const bool stuckWhileGuard = (mission == Mission::Guard) && !pThis->InLimbo;
+		const bool stuckWhileUnload = (mission == Mission::Unload) && (pThis->MissionStatus == 1);
+		if (stuckWhileGuard || stuckWhileUnload)
+			BuildingExt::KickOutStuckUnits(pThis);
 	}
-
-	return Waiting;
-}
-
-// Check for any stuck units inside after successful unload each time. If there is, kick it out
-DEFINE_HOOK(0x44E260, BuildingClass_Mission_Unload_KickOutStuckUnits, 0x7)
-{
-	GET(BuildingClass*, pThis, EBP);
-
-	BuildingExt::KickOutStuckUnits(pThis);
 
 	return 0;
 }
@@ -292,12 +263,10 @@ DEFINE_HOOK(0x44E260, BuildingClass_Mission_Unload_KickOutStuckUnits, 0x7)
 // Should not kick out units if the factory building is in construction process
 DEFINE_HOOK(0x4444A0, BuildingClass_KickOutUnit_NoKickOutInConstruction, 0xA)
 {
-	enum { ThisIsOK = 0x444565, ThisIsNotOK = 0x4444B3};
+	enum { ThisIsOK = 0x444565, ThisIsNotOK = 0x4444B3 };
 
 	GET(BuildingClass* const, pThis, ESI);
-
 	const auto mission = pThis->GetCurrentMission();
-
 	return (mission == Mission::Unload || mission == Mission::Construction) ? ThisIsNotOK : ThisIsOK;
 }
 
@@ -307,10 +276,8 @@ DEFINE_HOOK(0x4444A0, BuildingClass_KickOutUnit_NoKickOutInConstruction, 0xA)
 DEFINE_HOOK(0x44FBBF, CreateBuildingFromINIFile_AfterCTOR_BeforeUnlimbo, 0x8)
 {
 	GET(BuildingClass* const, pBld, ESI);
-
 	if (auto const pExt = BuildingExt::ExtMap.TryFind(pBld))
 		pExt->IsCreatedFromMapFile = true;
-
 	return 0;
 }
 
@@ -374,7 +341,6 @@ DEFINE_HOOK(0x4511D6, BuildingClass_AnimationAI_SellBuildup, 0x7)
 	enum { Skip = 0x4511E6, Continue = 0x4511DF };
 
 	GET(BuildingClass*, pThis, ESI);
-
 	return BuildingTypeExt::ExtMap.Find(pThis->Type)->SellBuildupLength == pThis->Animation.Value ? Continue : Skip;
 }
 
@@ -388,11 +354,10 @@ DEFINE_HOOK(0x441501, BuildingClass_Unlimbo_FactoryPlant, 0x6)
 
 	auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pThis->Type);
 
-	if (pTypeExt->FactoryPlant_AllowTypes.size() > 0 || pTypeExt->FactoryPlant_DisallowTypes.size() > 0)
+	if (!pTypeExt->FactoryPlant_AllowTypes.empty() || !pTypeExt->FactoryPlant_DisallowTypes.empty())
 	{
 		auto const pHouseExt = HouseExt::ExtMap.Find(pThis->Owner);
 		pHouseExt->RestrictedFactoryPlants.push_back(pThis);
-
 		return Skip;
 	}
 
@@ -407,16 +372,14 @@ DEFINE_HOOK(0x448A31, BuildingClass_Captured_FactoryPlant1, 0x6)
 
 	auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pThis->Type);
 
-	if (pTypeExt->FactoryPlant_AllowTypes.size() > 0 || pTypeExt->FactoryPlant_DisallowTypes.size() > 0)
+	if (!pTypeExt->FactoryPlant_AllowTypes.empty() || !pTypeExt->FactoryPlant_DisallowTypes.empty())
 	{
 		auto const pHouseExt = HouseExt::ExtMap.Find(pThis->Owner);
-
 		if (!pHouseExt->RestrictedFactoryPlants.empty())
 		{
-			// 🔧 Optimized: Faster deterministic removal (order doesn't matter for RestrictedFactoryPlants)
+			// Faster deterministic removal
 			swap_erase_first(pHouseExt->RestrictedFactoryPlants, pThis);
 		}
-
 		return Skip;
 	}
 
@@ -431,13 +394,10 @@ DEFINE_HOOK(0x449149, BuildingClass_Captured_FactoryPlant2, 0x6)
 
 	auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pThis->Type);
 
-	if (pTypeExt->FactoryPlant_AllowTypes.size() > 0 || pTypeExt->FactoryPlant_DisallowTypes.size() > 0)
+	if (!pTypeExt->FactoryPlant_AllowTypes.empty() || !pTypeExt->FactoryPlant_DisallowTypes.empty())
 	{
 		GET(HouseClass*, pNewOwner, EBP);
-
-		auto const pHouseExt = HouseExt::ExtMap.Find(pNewOwner);
-		pHouseExt->RestrictedFactoryPlants.push_back(pThis);
-
+		HouseExt::ExtMap.Find(pNewOwner)->RestrictedFactoryPlants.push_back(pThis);
 		return Skip;
 	}
 
@@ -449,10 +409,9 @@ DEFINE_HOOK(0x449149, BuildingClass_Captured_FactoryPlant2, 0x6)
 #pragma region DestroyableObstacle
 
 template <bool remove = false>
-static void RecalculateCells(BuildingClass* pThis)
+static __forceinline void RecalculateCells(BuildingClass* pThis)
 {
 	auto const cells = BuildingExt::GetFoundationCells(pThis, pThis->GetMapCoords());
-
 	auto& map = MapClass::Instance;
 
 	for (auto const& cell : cells)
@@ -462,12 +421,15 @@ static void RecalculateCells(BuildingClass* pThis)
 			pCell->RecalcAttributes(DWORD(-1));
 
 			if constexpr (remove)
+			{
 				map.ResetZones(cell);
+			}
 			else
+			{
 				map.RecalculateZones(cell);
+			}
 
 			map.RecalculateSubZones(cell);
-
 		}
 	}
 }
@@ -477,7 +439,7 @@ DEFINE_HOOK(0x440D01, BuildingClass_Unlimbo_DestroyableObstacle, 0x6)
 	GET(BuildingClass*, pThis, ESI);
 
 	if (BuildingTypeExt::ExtMap.Find(pThis->Type)->IsDestroyableObstacle)
-		RecalculateCells(pThis);
+		RecalculateCells<false>(pThis);
 
 	return 0;
 }
@@ -530,29 +492,33 @@ DEFINE_HOOK(0x44C836, BuildingClass_Mission_Repair_UnitReload, 0x6)
 {
 	GET(BuildingClass*, pThis, EBP);
 
-	if (pThis->Type->UnitReload)
+	auto const pType = pThis->Type;
+	if (pType->UnitReload)
 	{
-		auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pThis->Type);
+		auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pType);
 
 		if (pTypeExt->Units_RepairRate.isset())
 		{
 			const double repairRate = pTypeExt->Units_RepairRate.Get();
-
 			if (repairRate < 0.0)
 				return 0;
 
 			const int rate = static_cast<int>(Math::max(repairRate * 900, 1));
-
 			if (!(Unsorted::CurrentFrame % rate))
 			{
 				UnitRepairTemp::SeparateRepair = true;
 
-				for (auto i = 0; i < pThis->RadioLinks.Capacity; ++i)
+				const int cap = pThis->RadioLinks.Capacity;
+				for (auto i = 0; i < cap; ++i)
 				{
 					if (auto const pLink = pThis->GetNthLink(i))
 					{
-						if (!pLink->IsInAir() && pLink->Health < pLink->GetTechnoType()->Strength && pThis->SendCommand(RadioCommand::QueryMoving, pLink) == RadioCommand::AnswerPositive)
+						if (!pLink->IsInAir()
+							&& pLink->Health < pLink->GetTechnoType()->Strength
+							&& pThis->SendCommand(RadioCommand::QueryMoving, pLink) == RadioCommand::AnswerPositive)
+						{
 							pThis->SendCommand(RadioCommand::RequestRepair, pLink);
+						}
 					}
 				}
 
@@ -613,9 +579,7 @@ DEFINE_HOOK(0x6F4D1A, TechnoClass_ReceiveCommand_Repair, 0x5)
 		{
 			auto const pType = pThis->GetTechnoType();
 			repairCost = static_cast<int>((pType->GetCost() / (pType->Strength / static_cast<double>(repairStep))) * repairPercent);
-
-			if (repairCost < 1)
-				repairCost = 1;
+			if (repairCost < 1) repairCost = 1;
 		}
 
 		R->EAX(repairStep);
@@ -678,7 +642,6 @@ DEFINE_HOOK(0x4FAAD8, HouseClass_AbandonProduction_RewriteForBuilding, 0x8)
 			else
 				return Return;
 		}
-
 		return CheckSame;
 	}
 
@@ -723,7 +686,8 @@ DEFINE_HOOK(0x6A9789, StripClass_DrawStrip_NoGreyCameo, 0x6)
 		{
 			if (const auto pProduct = abstract_cast<BuildingClass*>(pFactory->Object))
 			{
-				if (pFactory->IsDone() && pProduct->Type != pType && ((pProduct->Type->BuildCat != BuildCat::Combat) ^ (pBuildingType->BuildCat == BuildCat::Combat)))
+				if (pFactory->IsDone() && pProduct->Type != pType
+					&& ((pProduct->Type->BuildCat != BuildCat::Combat) ^ (pBuildingType->BuildCat == BuildCat::Combat)))
 					return SkipGameCode;
 			}
 		}
@@ -796,7 +760,7 @@ DEFINE_HOOK(0x444B83, BuildingClass_ExitObject_BarracksExitCell, 0x7)
 	if (pTypeExt->BarracksExitCell.isset())
 	{
 		auto const exitCoords = pType->ExitCoord;
-		resultCoords = CoordStruct{ xCoord + exitCoords.X, yCoord + exitCoords.Y, exitCoords.Z };
+		resultCoords = CoordStruct { xCoord + exitCoords.X, yCoord + exitCoords.Y, exitCoords.Z };
 		return SkipGameCode;
 	}
 
@@ -832,7 +796,7 @@ DEFINE_HOOK(0x44B630, BuildingClass_MissionAttack_AnimDelayedFire, 0x6)
 
 #pragma region BuildingWaypoints
 
-bool __fastcall BuildingTypeClass_CanUseWaypoint(BuildingTypeClass* pThis)
+bool __fastcall BuildingTypeClass_CanUseWaypoint(BuildingTypeClass* /*pThis*/)
 {
 	return RulesExt::Global()->BuildingWaypoints;
 }
@@ -855,7 +819,6 @@ DEFINE_HOOK(0x4AE95E, DisplayClass_sub_4AE750_DisallowBuildingNonAttackPlanning,
 
 #pragma endregion
 
-
 DEFINE_HOOK(0x4400F9, BuildingClass_AI_UpdateOverpower, 0x6)
 {
 	enum { SkipGameCode = 0x44019D };
@@ -867,7 +830,7 @@ DEFINE_HOOK(0x4400F9, BuildingClass_AI_UpdateOverpower, 0x6)
 
 	int overPower = 0;
 
-	for (int idx = pThis->Overpowerers.Count - 1; idx >= 0; idx--)
+	for (int idx = pThis->Overpowerers.Count - 1; idx >= 0; --idx)
 	{
 		const auto pCharger = pThis->Overpowerers[idx];
 
@@ -895,7 +858,8 @@ DEFINE_HOOK(0x4400F9, BuildingClass_AI_UpdateOverpower, 0x6)
 	if (charge >= 0)
 	{
 		const int keepOnline = pBuildingTypeExt->Overpower_KeepOnline;
-		pThis->IsOverpowered = overPower >= keepOnline + charge || (pThis->Owner->GetPowerPercentage() == 1.0 && pThis->HasPower && overPower >= charge);
+		pThis->IsOverpowered = overPower >= keepOnline + charge
+			|| (pThis->Owner->GetPowerPercentage() == 1.0 && pThis->HasPower && overPower >= charge);
 	}
 	else
 	{
@@ -922,7 +886,6 @@ DEFINE_HOOK(0x4555E4, BuildingClass_IsPowerOnline_Overpower, 0x6)
 	for (const auto pCharger : pThis->Overpowerers)
 	{
 		const auto pWeapon = pCharger->GetWeapon(1)->WeaponType;
-
 		if (pWeapon && pWeapon->Warhead)
 		{
 			const auto pWHExt = WarheadTypeExt::ExtMap.Find(pWeapon->Warhead);
@@ -932,14 +895,3 @@ DEFINE_HOOK(0x4555E4, BuildingClass_IsPowerOnline_Overpower, 0x6)
 
 	return overPower < keepOnline ? LowPower : (R->Origin() == 0x4555E4 ? Continue1 : Continue2);
 }
-
-#pragma region AircraftFactory_RallyPoint
-
-bool FakeBuildingClass::_IsFactory() {
-	// Extended IsFactory logic: include AircraftType + original check
-	return this->Type->Factory == AbstractType::AircraftType || this->Type->Factory != AbstractType::None;
-}
-
-DEFINE_FUNCTION_JUMP(VTABLE, 0x7E4140, FakeBuildingClass::_IsFactory);
-
-#pragma endregion

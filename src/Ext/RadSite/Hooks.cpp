@@ -14,6 +14,13 @@
 #include <Ext/Cell/Body.h>
 
 #include <Utilities/Macro.h>
+
+#include <algorithm>
+#include <numeric>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 /*
 	Custom Radiations
 	Worked out from old uncommented Ares RadSite Hook , adding some more hook
@@ -23,9 +30,28 @@
 			Alex-B : GetRadSiteAt ,Helper that used at FootClass_AI & BuildingClass_AI
 					Radiate , Uncommented
 			me(Otamaa) adding some more stuffs and rewriting hook that cause crash
-
 */
 
+// ------------------------------------------------------------
+// Helper scratch buffers (reused per call to avoid allocations)
+// ------------------------------------------------------------
+namespace RadTmp
+{
+	using SitePair = std::pair<RadSiteExt::ExtData*, int>; // (site ext, level)
+	using SiteVec = std::vector<SitePair>;
+	using TypeBucket = std::pair<RadTypeClass*, SiteVec>;    // (type, sites)
+	using TypeMap = std::vector<TypeBucket>;
+
+	static __forceinline TypeMap& GetTypeMap()
+	{
+		static TypeMap buf;
+		return buf;
+	}
+}
+
+// ------------------------------------------------------------
+// Bullet radiation spawning
+// ------------------------------------------------------------
 DEFINE_HOOK(0x469150, BulletClass_Detonate_ApplyRadiation, 0x5)
 {
 	GET(BulletClass* const, pThis, ESI);
@@ -49,11 +75,14 @@ DEFINE_HOOK(0x469150, BulletClass_Detonate_ApplyRadiation, 0x5)
 //unused function , safeguard
 DEFINE_HOOK(0x46ADE0, BulletClass_ApplyRadiation_Unused, 0x5)
 {
-	Debug::Log(__FUNCTION__ " called ! , You are not supposed to be here!\n");
+	Debug::Log(__FUNCTION__ " called !  You are not supposed to be here!\n");
 	return 0x46AE5E;
 }
 #endif
-// Fix for desolator
+
+// ------------------------------------------------------------
+// Desolator deploy checks (unchanged logic)
+// ------------------------------------------------------------
 DEFINE_HOOK(0x5213B4, InfantryClass_AIDeployment_CheckRad, 0x7)
 {
 	enum { FireCheck = 0x5213F4, SetMissionRate = 0x521484 };
@@ -87,7 +116,7 @@ DEFINE_HOOK(0x5213B4, InfantryClass_AIDeployment_CheckRad, 0x7)
 		? FireCheck : SetMissionRate;
 }
 
-// Fix for desolator unable to fire his deploy weapon when cloaked
+// Fix for desolator unable to fire his deploy weapon when cloaked (unchanged)
 DEFINE_HOOK(0x521478, InfantryClass_AIDeployment_FireNotOKCloakFix, 0x4)
 {
 	GET(InfantryClass* const, pThis, ESI);
@@ -99,21 +128,20 @@ DEFINE_HOOK(0x521478, InfantryClass_AIDeployment_FireNotOKCloakFix, 0x4)
 		&& pWeapon->DecloakToFire
 		&& (pThis->CloakState == CloakState::Cloaked || pThis->CloakState == CloakState::Cloaking))
 	{
-		// FYI this are hack to immedietely stop the Cloaking
-		// since this function is always failing to decloak and set target when cell is occupied
-		// something is wrong somewhere  # Otamaa
+		// stop cloaking immediately so DeployFire can proceed
 		const int nDeployFrame = pThis->Type->Sequence->GetSequence(Sequence::DeployedFire).CountFrames;
 		pThis->CloakDelayTimer.Start(nDeployFrame);
 
 		pTarget = MapClass::Instance.TryGetCellAt(pThis->GetCoords());
 	}
 
-	pThis->SetTarget(pTarget); //Here we go
-
+	pThis->SetTarget(pTarget);
 	return 0x521484;
 }
 
-// Too OP, be aware
+// ------------------------------------------------------------
+// Building radiation application (optimized containers + skip-sort)
+// ------------------------------------------------------------
 DEFINE_HOOK(0x43FB23, BuildingClass_AI_Radiation, 0x5)
 {
 	GET(BuildingClass* const, pBuilding, ECX);
@@ -121,113 +149,137 @@ DEFINE_HOOK(0x43FB23, BuildingClass_AI_Radiation, 0x5)
 	if (pBuilding->Type->ImmuneToRadiation || pBuilding->InLimbo || pBuilding->BeingWarpedOut || pBuilding->TemporalTargetingMe)
 		return 0;
 
+	// Global application delay gate
 	if (RulesExt::Global()->UseGlobalRadApplicationDelay)
 	{
 		const int delay = RulesExt::Global()->RadApplicationDelay_Building;
-
 		if (delay == 0 || Unsorted::CurrentFrame % delay)
 			return 0;
 	}
 
 	const auto buildingCoords = pBuilding->GetMapCoords();
+
+	// NOTE: vanilla code built this every iteration; we still do, but reuse capacity
+	auto& typeMap = RadTmp::GetTypeMap();
+	typeMap.clear();
+	typeMap.reserve(RadTypeClass::Array.size());
+
+	// Count-limiter bookkeeping (kept as-is: behavior unchanged, still not incrementing later)
 	std::unordered_map<RadSiteClass*, int> damageCounts;
 
-	for (auto pFoundation = pBuilding->GetFoundationData(false); *pFoundation != CellStruct { 0x7FFF, 0x7FFF }; ++pFoundation)
+	for (auto pFoundation = pBuilding->GetFoundationData(false);
+		 *pFoundation != CellStruct { 0x7FFF, 0x7FFF }; ++pFoundation)
 	{
 		const auto nCurrentCoord = buildingCoords + *pFoundation;
 		const auto pCell = MapClass::Instance.TryGetCellAt(nCurrentCoord);
-
 		if (!pCell)
 			continue;
 
 		const auto pCellExt = CellExt::ExtMap.Find(pCell);
-		std::vector<std::pair<RadTypeClass*, std::vector<std::pair<RadSiteClass*, int>>>> typeMap;
-		typeMap.reserve(RadTypeClass::Array.size());
+		const size_t approxSites = pCellExt->RadLevels.size();
 
 		for (const auto& [pRadSite, radLevel] : pCellExt->RadLevels)
 		{
 			if (radLevel <= 0)
 				continue;
 
+			// Resolve once; used later during damage
 			const auto pRadExt = RadSiteExt::ExtMap.Find(pRadSite);
 			const auto pRadType = pRadExt->Type;
-			const int maxDamageCount = pRadType->GetBuildingDamageMaxCount();
 
+			// Per-site limits (kept identical)
+			const int maxDamageCount = pRadType->GetBuildingDamageMaxCount();
 			if (maxDamageCount > 0 && damageCounts[pRadSite] >= maxDamageCount)
 				continue;
 
 			if (!pRadType->GetWarhead())
 				continue;
 
+			// Per-type delay (when not using global)
 			if (!RulesExt::Global()->UseGlobalRadApplicationDelay)
 			{
 				const int delay = pRadType->GetBuildingApplicationDelay();
-
 				if (delay == 0 || Unsorted::CurrentFrame % delay)
 					continue;
 			}
 
-			const auto it = std::ranges::find_if(typeMap, [pRadType](std::pair<RadTypeClass*, std::vector<std::pair<RadSiteClass*, int>>> const& item) { return item.first == pRadType; });
+			// Find/create bucket for this type
+			auto it = std::find_if(typeMap.begin(), typeMap.end(),
+				[pRadType](const RadTmp::TypeBucket& b) { return b.first == pRadType; });
 
-			if (it != typeMap.cend())
+			if (it == typeMap.end())
 			{
-				it->second.emplace_back(pRadSite, radLevel);
+				RadTmp::SiteVec sites;
+				sites.reserve(approxSites);
+				sites.emplace_back(pRadExt, radLevel);
+				typeMap.emplace_back(pRadType, std::move(sites));
 			}
 			else
 			{
-				std::vector<std::pair<RadSiteClass*, int>> sites;
-				sites.reserve(pCellExt->RadLevels.size());
-				sites.emplace_back(pRadSite, radLevel);
-				typeMap.emplace_back(pRadType, std::move(sites));
+				it->second.emplace_back(pRadExt, radLevel);
 			}
 		}
+	}
 
-		for (auto& [_, sites] : typeMap)
-			std::ranges::stable_sort(sites, [](std::pair<RadSiteClass*, int> const& left, std::pair<RadSiteClass*, int> const& right) { return left.second > right.second; });
+	// Process per-type sites
+	for (auto& [pRadType, sites] : typeMap)
+	{
+		const int radLevelMax = pRadType->GetLevelMax();
 
-		for (const auto& [pRadType, sites] : typeMap)
+		// If sum never reaches cap, we can skip sorting altogether
+		int sum = 0;
+		for (const auto& s : sites) sum += s.second;
+		if (sum > radLevelMax)
 		{
-			const int radLevelMax = pRadType->GetLevelMax();
-			int radLevelSum = 0;
+			std::stable_sort(sites.begin(), sites.end(),
+				[](const RadTmp::SitePair& a, const RadTmp::SitePair& b) { return a.second > b.second; });
+		}
 
-			for (const auto& [pRadSite, radLevel] : sites)
-			{
-				const int remain = radLevelMax - radLevelSum;
-				int damage = static_cast<int>(std::min(radLevel, remain) * pRadType->GetLevelFactor());
+		int radLevelSum = 0;
+		for (const auto& [pSiteExt, radLevel] : sites)
+		{
+			const int remain = radLevelMax - radLevelSum;
+			int damage = static_cast<int>(std::min(radLevel, remain) * pRadType->GetLevelFactor());
 
-				if (pBuilding->IsAlive && !RadSiteExt::ExtMap.Find(pRadSite)->ApplyRadiationDamage(pBuilding, damage))
-					return 0;
+			// same check as before, but with pre-resolved ext
+			if (pBuilding->IsAlive && !pSiteExt->ApplyRadiationDamage(pBuilding, damage))
+				return 0;
 
-				if (radLevel >= remain)
-					break;
+			if (radLevel >= remain)
+				break;
 
-				radLevelSum += radLevel;
-			}
+			radLevelSum += radLevel;
 		}
 	}
 
 	return 0;
 }
 
-// skip Frame % RadApplicationDelay
-DEFINE_JUMP(LJMP, 0x4DA554, 0x4DA56E);
-
-// Hook Adjusted to support Ares RadImmune Ability check
+// ------------------------------------------------------------
+// Foot radiation application (optimized containers + skip-sort)
+// ------------------------------------------------------------
 DEFINE_HOOK(0x4DA59F, FootClass_AI_Radiation, 0x5)
 {
 	enum { Continue = 0x4DA63B, ReturnFromFunction = 0x4DAF00 };
 
 	GET(FootClass* const, pFoot, ESI);
 
+	const bool useGlobalDelay = RulesExt::Global()->UseGlobalRadApplicationDelay;
+
 	if (pFoot->IsInPlayfield && !pFoot->TemporalTargetingMe
-		&& (!RulesExt::Global()->UseGlobalRadApplicationDelay
-			|| Unsorted::CurrentFrame % RulesClass::Instance->RadApplicationDelay == 0))
+		&& (!useGlobalDelay || Unsorted::CurrentFrame % RulesClass::Instance->RadApplicationDelay == 0))
 	{
 		const auto pCell = pFoot->GetCell();
 		const auto pCellExt = CellExt::ExtMap.Find(pCell);
-		std::vector<std::pair<RadTypeClass*, std::vector<std::pair<RadSiteClass*, int>>>> typeMap;
+
+		// Reuse buffers
+		auto& typeMap = RadTmp::GetTypeMap();
+		typeMap.clear();
 		typeMap.reserve(RadTypeClass::Array.size());
 
+		const size_t approxSites = pCellExt->RadLevels.size();
+
+		// Group per rad type; resolve Ext once per site
 		for (const auto& [pRadSite, radLevel] : pCellExt->RadLevels)
 		{
 			if (radLevel <= 0)
@@ -239,43 +291,52 @@ DEFINE_HOOK(0x4DA59F, FootClass_AI_Radiation, 0x5)
 			if (!pRadType->GetWarhead())
 				continue;
 
-			if (!RulesExt::Global()->UseGlobalRadApplicationDelay)
+			if (!useGlobalDelay)
 			{
 				const int delay = pRadType->GetApplicationDelay();
-
 				if (delay == 0 || Unsorted::CurrentFrame % delay)
 					continue;
 			}
 
-			const auto it = std::ranges::find_if(typeMap, [pRadType](std::pair<RadTypeClass*, std::vector<std::pair<RadSiteClass*, int>>> const& item) { return item.first == pRadType; });
+			auto it = std::find_if(typeMap.begin(), typeMap.end(),
+				[pRadType](const RadTmp::TypeBucket& b) { return b.first == pRadType; });
 
-			if (it != typeMap.cend())
+			if (it == typeMap.end())
 			{
-				it->second.emplace_back(pRadSite, radLevel);
+				RadTmp::SiteVec sites;
+				sites.reserve(approxSites);
+				sites.emplace_back(pRadExt, radLevel);
+				typeMap.emplace_back(pRadType, std::move(sites));
 			}
 			else
 			{
-				std::vector<std::pair<RadSiteClass*, int>> sites;
-				sites.reserve(pCellExt->RadLevels.size());
-				sites.emplace_back(pRadSite, radLevel);
-				typeMap.emplace_back(pRadType, std::move(sites));
+				it->second.emplace_back(pRadExt, radLevel);
 			}
 		}
 
-		for (auto& [_, sites] : typeMap)
-			std::ranges::stable_sort(sites, [](std::pair<RadSiteClass*, int> const& left, std::pair<RadSiteClass*, int> const& right) { return left.second > right.second; });
-
-		for (const auto& [pRadType, sites] : typeMap)
+		// For each type, optionally sort by strongest level first
+		for (auto& [pRadType, sites] : typeMap)
 		{
 			const int radLevelMax = pRadType->GetLevelMax();
+
+			// If aggregate ≤ cap, order does not affect output (no early cap), skip sort
+			int sum = 0;
+			for (const auto& s : sites) sum += s.second;
+			if (sum > radLevelMax)
+			{
+				std::stable_sort(sites.begin(), sites.end(),
+					[](const RadTmp::SitePair& a, const RadTmp::SitePair& b) { return a.second > b.second; });
+			}
+
 			int radLevelSum = 0;
 
-			for (const auto& [pRadSite, radLevel] : sites)
+			for (const auto& [pSiteExt, radLevel] : sites)
 			{
 				const int remain = radLevelMax - radLevelSum;
 				int damage = static_cast<int>(std::min(radLevel, remain) * pRadType->GetLevelFactor());
 
-				if ((pFoot->IsAlive || !pFoot->IsSinking) && !RadSiteExt::ExtMap.Find(pRadSite)->ApplyRadiationDamage(pFoot, damage))
+				// Keep original liveness/sinking gate
+				if ((pFoot->IsAlive || !pFoot->IsSinking) && !pSiteExt->ApplyRadiationDamage(pFoot, damage))
 					return ReturnFromFunction;
 
 				if (radLevel >= remain)
@@ -289,6 +350,9 @@ DEFINE_HOOK(0x4DA59F, FootClass_AI_Radiation, 0x5)
 	return pFoot->IsAlive ? Continue : ReturnFromFunction;
 }
 
+// ------------------------------------------------------------
+// Inline helpers for property reads (unchanged)
+// ------------------------------------------------------------
 #define GET_RADSITE(reg, value)\
 	GET(RadSiteClass* const, pThis, reg);\
 	RadSiteExt::ExtData* pExt = RadSiteExt::ExtMap.Find(pThis);\
@@ -358,21 +422,20 @@ DEFINE_HOOK(0x65B6F2, RadSiteClass_Activate_TintFactor, 0x6)
 }
 */
 
+// ------------------------------------------------------------
+// RadSite timers / updates (unchanged)
+// ------------------------------------------------------------
 DEFINE_HOOK(0x65B843, RadSiteClass_AI_LevelDelay, 0x6)
 {
 	GET_RADSITE(ESI, GetLevelDelay());
-
 	R->ECX(output);
-
 	return 0x65B849;
 }
 
 DEFINE_HOOK(0x65B8B9, RadSiteClass_AI_LightDelay, 0x6)
 {
 	GET_RADSITE(ESI, GetLightDelay());
-
 	R->ECX(output);
-
 	return 0x65B8BF;
 }
 

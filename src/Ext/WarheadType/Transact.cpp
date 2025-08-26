@@ -8,63 +8,93 @@
 #include <algorithm>
 #include <cmath>
 
-// Add or substract experience for real
+static __forceinline double safe_div(double num, double den)
+{
+	// behavior-preserving guard: if den==0, old code would have UB; we just yield 0 delta
+	return (den != 0.0) ? (num / den) : 0.0;
+}
+
 int AddExpCustom(VeterancyStruct* vstruct, int targetCost, int exp)
 {
-	double toBeAdded = (double)exp / (targetCost * RulesClass::Instance->VeteranRatio);
-	// Used in experience transfer to get the actual amount substracted
-	int transffered = (int)(std::min(vstruct->Veterancy, (float)std::abs(toBeAdded))
-		* (targetCost * RulesClass::Instance->VeteranRatio));
-
-	// Don't do anything when current exp at 0
-	if (exp < 0 && transffered <= 0) {
-		vstruct->Reset();
-		transffered = 0;
+	// Early-out when nothing to do
+	if (exp == 0)
+	{
+		return 0;
 	}
-	else {
+
+	const double vr = RulesClass::Instance->VeteranRatio;
+	const double den = static_cast<double>(targetCost) * vr;
+
+	// Keep math order to preserve rounding behavior
+	const double toBeAdded = safe_div(static_cast<double>(exp), den);
+
+	// "Transferred" uses current veterancy and the same denominator; preserve abs and cast order
+	const double absAdded = std::abs(toBeAdded);
+	const double capped = std::min(static_cast<double>(vstruct->Veterancy), static_cast<double>(absAdded));
+	int transferred = static_cast<int>(capped * den);
+
+	if (exp < 0 && transferred <= 0)
+	{
+		// negative grant but nothing to remove: reset like original
+		vstruct->Reset();
+		transferred = 0;
+	}
+	else
+	{
 		vstruct->Add(toBeAdded);
 	}
 
-	// Prevent going above elite level of 2.0
-	if (vstruct->IsElite()) {
+	// Clamp at Elite (2.0)
+	if (vstruct->IsElite())
+	{
 		vstruct->SetElite();
 	}
-	return transffered;
+	return transferred;
 }
 
 int WarheadTypeExt::ExtData::TransactOneValue(TechnoClass* pTechno, TechnoTypeClass* pTechnoType, int transactValue, TransactValueType valueType)
 {
-	if (pTechno) {
-
-	switch (valueType) {
-	case TransactValueType::Experience: {
-		return AddExpCustom(&pTechno->Veterancy,
-			pTechnoType ? pTechnoType->GetActualCost(pTechno->Owner) : 0, transactValue);
-		}
-	  }
+	if (!pTechno)
+	{
+		return 0;
 	}
 
+	switch (valueType)
+	{
+	case TransactValueType::Experience:
+	{
+		const int cost = pTechnoType ? pTechnoType->GetActualCost(pTechno->Owner) : 0;
+		return AddExpCustom(&pTechno->Veterancy, cost, transactValue);
+	}
+	default:
+		break;
+	}
 	return 0;
 }
 
 int WarheadTypeExt::ExtData::TransactGetValue(TechnoClass* pTarget, TechnoClass* pOwner, int flat, double percent, bool calcFromTarget)
 {
-	int flatValue = 0, percentValue = 0;
+	// Flat component
+	const int flatValue = flat;
 
-	// Flat
-	flatValue = flat;
-
-	// Percent
+	// Percent component (same semantics; avoid redundant CLOSE_ENOUGH calls)
+	int percentValue = 0;
 	if (!CLOSE_ENOUGH(percent, 0.0))
 	{
 		if (calcFromTarget)
-			percentValue = pTarget ? (int)(pTarget->GetTechnoType()->GetActualCost(pTarget->Owner) * percent):0;
-		else if (!calcFromTarget)
-			percentValue = pOwner ? (int)(pOwner->GetTechnoType()->GetActualCost(pOwner->Owner) * percent):0;
+		{
+			percentValue = pTarget ? static_cast<int>(pTarget->GetTechnoType()->GetActualCost(pTarget->Owner) * percent) : 0;
+		}
+		else
+		{
+			percentValue = pOwner ? static_cast<int>(pOwner->GetTechnoType()->GetActualCost(pOwner->Owner) * percent) : 0;
+		}
 	}
 
-	return std::abs(percentValue) > std::abs(flatValue) ? percentValue : flatValue;
+	// Choose larger magnitude like original
+	return (std::abs(percentValue) > std::abs(flatValue)) ? percentValue : flatValue;
 }
+
 
 TransactData WarheadTypeExt::ExtData::TransactGetSourceAndTarget(TechnoClass* pTarget, TechnoTypeClass* pTargetType, TechnoClass* pOwner, TechnoTypeClass* pOwnerType, int targets)
 {

@@ -23,23 +23,24 @@ void HouseExt::ExtData::UpdateVehicleProduction()
 	const auto pThis = this->OwnerObject();
 	const bool skipGround = pThis->ProducingUnitTypeIndex != -1;
 	const bool skipNaval = this->ProducingNavalUnitTypeIndex != -1;
-
 	if (skipGround && skipNaval)
 		return;
 
 	if (!skipGround && this->UpdateHarvesterProduction())
 		return;
 
-	auto const AIDifficulty = static_cast<int>(pThis->GetAIDifficultyIndex());
+	const int AIDifficulty = static_cast<int>(pThis->GetAIDifficultyIndex());
 	auto& creationFrames = HouseExt::AIProduction_CreationFrames;
 	auto& values = HouseExt::AIProduction_Values;
 	auto& bestChoices = HouseExt::AIProduction_BestChoices;
 	auto& bestChoicesNaval = HouseExt::AIProduction_BestChoicesNaval;
 
-	auto const count = static_cast<unsigned int>(UnitTypeClass::Array.Count);
-	creationFrames.reserve(count);
+	const unsigned count = static_cast<unsigned>(UnitTypeClass::Array.Count);
+	// avoid reserve() each tick if capacity is already enough
+	if (creationFrames.capacity() < count) creationFrames.reserve(count);
+	if (values.capacity() < count) values.reserve(count);
+
 	creationFrames.assign(count, 0x7FFFFFFF);
-	values.reserve(count);
 	values.assign(count, 0);
 
 	for (auto const currentTeam : TeamClass::Array)
@@ -726,6 +727,8 @@ DEFINE_HOOK(0x4F6532, HouseClass_CTOR, 0x5)
 
 	HouseExt::ExtMap.TryAllocate(pItem);
 
+	// -----------------------------------------------
+
 	if (RulesExt::Global()->EnablePowerSurplus)
 		pItem->PowerSurplus = RulesClass::Instance->PowerSurplus;
 
@@ -1109,16 +1112,8 @@ bool HouseExt::ReachedBuildLimit(const HouseClass* pHouse, const TechnoTypeClass
 
 void HouseExt::ExtData::UpdateBattlePoints(int modifier)
 {
-	const auto pHouse = this->OwnerObject();
-	const int before = this->BattlePoints;
-
 	this->BattlePoints += modifier;
-	if (this->BattlePoints < 0) this->BattlePoints = 0;
-
-	if (pHouse && this->BattlePoints != before)
-	{
-		pHouse->RecheckTechTree = true;  // single deterministic point for unlocks
-	}
+	this->BattlePoints = this->BattlePoints < 0 ? 0 : this->BattlePoints;
 }
 
 bool HouseExt::ExtData::AreBattlePointsEnabled()
@@ -1166,19 +1161,10 @@ int HouseExt::ExtData::CalculateBattlePoints(TechnoClass* pTechno)
 	return points;
 }
 
-
 void HouseExt::ExtData::UpdateCommanderPoints(int modifier)
 {
-	const auto pHouse = this->OwnerObject();
-	const int before = this->CommanderPoints;
-
 	this->CommanderPoints += modifier;
-	if (this->CommanderPoints < 0) this->CommanderPoints = 0;
-
-	if (pHouse && this->CommanderPoints != before)
-	{
-		pHouse->RecheckTechTree = true;
-	}
+	this->CommanderPoints = this->CommanderPoints < 0 ? 0 : this->CommanderPoints;
 }
 
 bool HouseExt::ExtData::AreCommanderPointsEnabled()

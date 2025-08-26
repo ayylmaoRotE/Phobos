@@ -7,17 +7,9 @@
 #include <Ext/WarheadType/Body.h>
 #include <Misc/SyncLogging.h>
 
-// stable, single-pass erase of the first matching pointer; preserves order
-template<typename T>
-static __forceinline void stable_erase_first(std::vector<T*>& v, T* value)
-{
-	for (size_t i = 0, n = v.size(); i < n; ++i)
-	{
-		if (v[i] == value) { v.erase(v.begin() + i); return; }
-	}
-}
+AnimExt::ExtContainer AnimExt::ExtMap;
+std::vector<AnimClass*> AnimExt::AnimsWithAttachedParticles;
 
-// swap-to-back erase for better performance when order doesn't matter
 template<typename T>
 static __forceinline void swap_erase_ptr(std::vector<T*>& v, T* value)
 {
@@ -26,9 +18,6 @@ static __forceinline void swap_erase_ptr(std::vector<T*>& v, T* value)
 		if (v[i] == value) { if (i + 1 != n) std::swap(v[i], v[n - 1]); v.pop_back(); return; }
 	}
 }
-
-AnimExt::ExtContainer AnimExt::ExtMap;
-std::vector<AnimClass*> AnimExt::AnimsWithAttachedParticles;
 
 AnimExt::ExtData::~ExtData()
 {
@@ -62,26 +51,18 @@ void AnimExt::ExtData::SetInvoker(TechnoClass* pInvoker, HouseClass* pInvokerHou
 
 void AnimExt::ExtData::CreateAttachedSystem()
 {
-	const auto pThis = this->OwnerObject();
-	const auto pTypeExt = AnimTypeExt::ExtMap.TryFind(pThis->Type);
-
+	AnimClass* const pThis = this->OwnerObject();
+	auto const pTypeExt = AnimTypeExt::ExtMap.TryFind(pThis->Type);
 	if (pTypeExt && pTypeExt->AttachedSystem && !this->AttachedSystem)
 	{
-		this->AttachedSystem = GameCreate<ParticleSystemClass>(pTypeExt->AttachedSystem.Get(), pThis->Location, pThis->GetCell(), pThis, CoordStruct::Empty, nullptr);
-		AnimExt::AnimsWithAttachedParticles.push_back(pThis);
-	}
-}
+		this->AttachedSystem = GameCreate<ParticleSystemClass>(
+			pTypeExt->AttachedSystem.Get(), pThis->Location, pThis->GetCell(), pThis, CoordStruct::Empty, nullptr);
 
-void AnimExt::ExtData::DeleteAttachedSystem()
-{
-	if (this->AttachedSystem)
-	{
-		this->AttachedSystem->Owner = nullptr;
-		this->AttachedSystem->UnInit();
-		this->AttachedSystem = nullptr;
-
-		auto& vec = AnimExt::AnimsWithAttachedParticles;
-		stable_erase_first(vec, this->OwnerObject()); // Performance optimization: was erase(remove(...))
+		auto& v = AnimExt::AnimsWithAttachedParticles;
+		if (std::find(v.begin(), v.end(), pThis) == v.end())
+		{
+			v.push_back(pThis);
+		}
 	}
 }
 
@@ -380,43 +361,6 @@ void AnimExt::SpawnFireAnims(AnimClass* pThis)
 	}
 }
 
-void AnimExt::SpawnConcurrentAnims(AnimClass* pThis)
-{
-	if (!pThis || !pThis->Type)
-		return;
-
-	const auto pTypeExt = AnimTypeExt::ExtMap.Find(pThis->Type);
-	
-	if (pTypeExt->ConcurrentAnim.empty() || pTypeExt->ConcurrentChance.Get() <= 0.0)
-		return;
-
-	const auto pCoord = pThis->GetCoords();
-
-	// Extended logic: spawn multiple animations with individual chances
-	for (size_t i = 0; i < pTypeExt->ConcurrentAnim.size(); i++)
-	{
-		auto pAnimType = pTypeExt->ConcurrentAnim[i];
-		if (!pAnimType)
-			continue;
-
-		// Get individual chance or fallback to default chance
-		double chance = pTypeExt->ConcurrentChances.size() > i ? 
-			pTypeExt->ConcurrentChances[i] : pTypeExt->ConcurrentChance.Get();
-
-		// Check if animation should spawn
-		if (ScenarioClass::Instance->Random.RandomDouble() <= chance)
-		{
-			// Prevent infinite recursion
-			if (pAnimType == pThis->Type)
-				continue;
-
-			auto pNewAnim = GameCreate<AnimClass>(pAnimType, pCoord, 0, 1, 0x600, 0, false);
-			if (pNewAnim)
-				pNewAnim->Owner = pThis->GetOwningHouse();
-		}
-	}
-}
-
 void AnimExt::CreateRandomAnim(const std::vector<AnimTypeClass*>& AnimList, CoordStruct coords, TechnoClass* pTechno, HouseClass* pHouse, bool invoker, bool ownedObject)
 {
 	if (AnimList.empty())
@@ -548,6 +492,17 @@ void AnimExt::InvalidateParticleSystemPointers(ParticleSystemClass* pPS)
 	}
 }
 
+void AnimExt::ExtData::DeleteAttachedSystem()
+{
+	if (!this->AttachedSystem) return;
+	this->AttachedSystem->Owner = nullptr;
+	this->AttachedSystem->UnInit();
+	this->AttachedSystem = nullptr;
+
+	auto& v = AnimExt::AnimsWithAttachedParticles;
+	v.erase(std::remove(v.begin(), v.end(), this->OwnerObject()), v.end());
+}
+
 // =============================
 // container
 
@@ -598,9 +553,6 @@ DEFINE_HOOK(0x4226F6, AnimClass_CTOR, 0x6)
 		SyncLogger::AddAnimCreationSyncLogEvent(CTORTemp::coords, CTORTemp::callerAddress);
 
 	AnimExt::ExtMap.Allocate(pItem);
-
-	// Spawn concurrent animations
-	AnimExt::SpawnConcurrentAnims(pItem);
 
 	return 0;
 }

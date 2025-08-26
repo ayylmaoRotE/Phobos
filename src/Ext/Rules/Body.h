@@ -173,9 +173,6 @@ public:
 		Valueable<AnimTypeClass*> Promote_VeteranAnimation;
 		Valueable<AnimTypeClass*> Promote_EliteAnimation;
 
-		Valueable<bool> JumpjetClimbPredictHeight;
-		Valueable<bool> JumpjetClimbWithoutCutOut;
-
 		Valueable<double> DamageOwnerMultiplier;
 		Valueable<double> DamageAlliesMultiplier;
 		Valueable<double> DamageEnemiesMultiplier;
@@ -199,13 +196,6 @@ public:
 		Nullable<Vector3D<float>> VoxelLightSource;
 		// Nullable<Vector3D<float>> VoxelShadowLightSource;
 		Valueable<bool> UseFixedVoxelLighting;
-
-		Valueable<bool> AIAutoDeployMCV;
-		Valueable<bool> AISetBaseCenter;
-		Valueable<bool> AIBiasSpawnCell;
-		Valueable<bool> AIForbidConYard;
-		Valueable<bool> AINodeWallsOnly;
-		Valueable<bool> AICleanWallNode;
 
 		Valueable<bool> AttackMove_Aggressive;
 		Valueable<bool> AttackMove_UpdateTarget;
@@ -272,6 +262,26 @@ public:
 		// Valueable<bool> TeamRetaliate; // Temporarily disabled for testing
 
 		Valueable<bool> InfantryAutoDeploy;
+
+		//Autosell AI
+		Valueable<bool> AILowHPSell_Enable;              // default false
+		Valueable<int>  AILowHPSell_ThresholdPercent;    // 1..100, default 34
+		Valueable<int>  AILowHPSell_Chance;              // 0..100, default 50
+		Valueable<bool> AILowHPSell_OnlyAI;              // default true
+		Valueable<bool> AILowHPSell_RespectUnsellable;   // default true
+
+
+		// ========= Harvester Auto-Return (global rules) =========
+		Valueable<bool> Harvester_AutoReturn_Enable;            // default: false
+		Valueable<int>  Harvester_AutoReturn_CargoPercent;      // default: 80
+		Valueable<int>  Harvester_AutoReturn_IdleTicks;         // default: 45
+		Valueable<int>  Harvester_AutoReturn_OutOfCombatTicks;  // default: 0 (ignore)
+		Valueable<int>  Harvester_AutoReturn_IssueCooldownTicks;// default: 90
+		Valueable<bool> Harvester_AutoReturn_SuppressOnStop;    // default: true
+
+		// List of TechnoTypes that should use auto-return
+		ValueableVector<TechnoTypeClass*> Harvester_AutoReturn_Types;
+
 
 		ExtData(RulesClass* OwnerObject) : Extension<RulesClass>(OwnerObject)
 			, Storage_TiberiumIndex { -1 }
@@ -401,8 +411,6 @@ public:
 			, DropPodTrailer { }
 			, DropPodDefaultTrailer { }
 			, PodImage { }
-			, JumpjetClimbPredictHeight { false }
-			, JumpjetClimbWithoutCutOut { false }
 			, DamageOwnerMultiplier { 1.0 }
 			, DamageAlliesMultiplier { 1.0 }
 			, DamageEnemiesMultiplier { 1.0 }
@@ -424,12 +432,6 @@ public:
 			, CombatAlert_UseAttackVoice { true }
 			, CombatAlert_UseEVA { true }
 			, UseFixedVoxelLighting { false }
-			, AIAutoDeployMCV { true }
-			, AISetBaseCenter { true }
-			, AIBiasSpawnCell { false }
-			, AIForbidConYard { false }
-			, AINodeWallsOnly { false }
-			, AICleanWallNode { false }
 			, AttackMove_Aggressive { false }
 			, AttackMove_UpdateTarget { false }
 			, MindControl_ThreatDelay { 0 }
@@ -484,6 +486,20 @@ public:
 
 			, Parasite_GrappleAnim {}
 			, InfantryAutoDeploy { false }
+
+			, AILowHPSell_Enable { false }
+			, AILowHPSell_ThresholdPercent { 15 }
+			, AILowHPSell_Chance { 20 }
+			, AILowHPSell_OnlyAI { true }
+			, AILowHPSell_RespectUnsellable { true }
+
+			, Harvester_AutoReturn_Enable { false }
+			, Harvester_AutoReturn_CargoPercent { 80 }
+			, Harvester_AutoReturn_IdleTicks { 45 }
+			, Harvester_AutoReturn_OutOfCombatTicks { 0 }
+			, Harvester_AutoReturn_IssueCooldownTicks { 90 }
+			, Harvester_AutoReturn_SuppressOnStop { true }
+			, Harvester_AutoReturn_Types {}
 		{ }
 
 		virtual ~ExtData() = default;

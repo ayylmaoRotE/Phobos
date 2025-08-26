@@ -2,6 +2,7 @@
 
 #include <InfantryClass.h>
 #include <InputManagerClass.h>
+#include <New/AISell/AICaptureSell.h>   // ← added
 
 DEFINE_HOOK(0x43C30A, BuildingClass_ReceiveMessage_Grinding, 0x6)
 {
@@ -36,7 +37,6 @@ DEFINE_HOOK(0x43C30A, BuildingClass_ReceiveMessage_Grinding, 0x6)
 	return ContinueAresCheck;
 }
 
-
 DEFINE_HOOK(0x4D4CD3, FootClass_Mission_Eaten_Grinding, 0x6)
 {
 	enum { LoseDestination = 0x4D4D43 };
@@ -66,6 +66,26 @@ DEFINE_HOOK(0x4D4B43, FootClass_Mission_Capture_ForbidUnintended, 0x6)
 	auto const pBld = specific_cast<BuildingClass*>(pThis->Destination);
 	if (!pBld)
 		return 0;
+
+	const auto* ext = BuildingTypeExt::ExtMap.Find(pBld->Type);
+	// default 34 if tag missing (mirrors Ext defaults), and clamp
+	int thresh = ext ? (int)ext->AICaptureSell_HealthBelowPercent : 34;
+	thresh = Math::clamp(thresh, 1, 100);
+
+	const int maxHP = pBld->Type->Strength;
+	const int curHP = pBld->Health;
+	const int hpPct = (maxHP > 0) ? (curHP * 100) / maxHP : 0;
+
+	if (hpPct >= thresh)
+	{
+		return 0;  // not low enough → do nothing, allow normal capture flow to continue
+	}
+
+	// INSERTED: AI panic-sell — proximity-based, MP-safe (direct mission)
+	if (AICaptureSell::TryAtEngineerDoor(pBld, pThis))
+	{
+		return LosesDestination; // drop destination; selling has started this tick
+	}
 
 	auto const pType = pThis->Type;
 

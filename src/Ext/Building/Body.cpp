@@ -85,97 +85,99 @@ void BuildingExt::StoreTiberium(BuildingClass* pThis, float amount, int idxTiber
 
 void BuildingExt::ExtData::UpdatePrimaryFactoryAI()
 {
-	auto const pOwner = this->OwnerObject()->Owner;
+	// Owner & current production type
+	auto* const pOwnerObj = this->OwnerObject();
+	HouseClass* const owner = pOwnerObj ? pOwnerObj->Owner : nullptr;
+	if (!owner) return;
 
-	if (!pOwner || pOwner->ProducingAircraftTypeIndex < 0)
-		return;
+	const int prodIdx = owner->ProducingAircraftTypeIndex;
+	if (prodIdx < 0) return;
 
-	auto const pAircraft = AircraftTypeClass::Array.GetItem(pOwner->ProducingAircraftTypeIndex);
-	auto currFactory = pOwner->GetFactoryProducing(pAircraft);
-	std::vector<BuildingClass*> airFactoryBuilding;
-	BuildingClass* newBuilding = nullptr;
+	auto* const pAircraft = AircraftTypeClass::Array.GetItem(prodIdx);
+	FactoryClass* currFactory = owner->GetFactoryProducing(pAircraft);
 
-	// Update what is the current air factory for future comparisons
-	if (this->CurrentAirFactory)
+	// Prefer the previously chosen air-factory if it still has free docks
+	BuildingClass* currentAir = this->CurrentAirFactory;
+	if (currentAir)
 	{
-		int nDocks = 0;
-		if (const auto pFactoryType = this->CurrentAirFactory->Type)
-			nDocks = pFactoryType->NumberOfDocks;
+		const BuildingTypeClass* const ft = currentAir->Type;
+		const int nDocks = ft ? ft->NumberOfDocks : 0;
+		const int nOcc = BuildingExt::CountOccupiedDocks(currentAir);
 
-		const int nOccupiedDocks = BuildingExt::CountOccupiedDocks(this->CurrentAirFactory);
-
-		if (nOccupiedDocks < nDocks)
-			currFactory = this->CurrentAirFactory->Factory;
-		else
-			this->CurrentAirFactory = nullptr;
-	}
-
-	// Obtain a list of air factories for optimizing the comparisons
-	for (auto const pBuilding : pOwner->Buildings)
-	{
-		if (pBuilding->Type->Factory == AbstractType::AircraftType)
+		if (nOcc < nDocks)
 		{
-			if (!currFactory && pBuilding->Factory)
-				currFactory = pBuilding->Factory;
-
-			airFactoryBuilding.emplace_back(pBuilding);
+			currFactory = currentAir->Factory;
+		}
+		else
+		{
+			this->CurrentAirFactory = nullptr; // no longer valid
+			currentAir = nullptr;
 		}
 	}
 
-	if (auto const pCurrent = this->CurrentAirFactory)
+	// Collect all air-factory buildings; also pick a fallback currFactory if still null
+	std::vector<BuildingClass*> airFactories;
+	airFactories.reserve(owner->Buildings.Count); // avoids growth
+	for (auto* const b : owner->Buildings)
 	{
-		for (auto const pBuilding : airFactoryBuilding)
+		const BuildingTypeClass* const bt = b->Type;
+		if (bt->Factory != AbstractType::AircraftType)
+			continue;
+
+		if (!currFactory && b->Factory)
+			currFactory = b->Factory;
+
+		airFactories.emplace_back(b);
+	}
+
+	// If we already have a valid "current" air factory: mark it primary, others non-primary
+	if (currentAir)
+	{
+		for (auto* const b : airFactories)
 		{
-			if (pBuilding == pCurrent)
+			if (b == currentAir)
 			{
-				pCurrent->Factory = currFactory;
-				pCurrent->IsPrimaryFactory = true;
+				currentAir->Factory = currFactory; // keep producing with the same factory pointer
+				currentAir->IsPrimaryFactory = true;
 			}
 			else
 			{
-				pBuilding->IsPrimaryFactory = false;
-
-				if (pBuilding->Factory)
+				b->IsPrimaryFactory = false;
+				if (b->Factory)
 				{
-					//auto const* prodType = pBuilding->Factory->Object->GetType();
-					pBuilding->Factory->AbandonProduction();
-					//Debug::Log("%s is not CurrentAirFactory of %s, production of %s aborted\n", pBuilding->Type->ID, pOwner->PlainName, prodType->ID);
+					b->Factory->AbandonProduction();
 				}
 			}
 		}
-
 		return;
 	}
 
-	if (!currFactory)
-		return;
+	// No current air-factory and no factory to drive production: nothing to do
+	if (!currFactory) return;
 
-	for (auto const pBuilding : airFactoryBuilding)
+	// Choose the first building with a free dock; mark it primary, cancel others
+	BuildingClass* chosen = nullptr;
+	for (auto* const b : airFactories)
 	{
-		if (!newBuilding)
+		if (!chosen)
 		{
-			if (BuildingExt::CountOccupiedDocks(pBuilding) < pBuilding->Type->NumberOfDocks)
+			const int docks = b->Type->NumberOfDocks;
+			if (BuildingExt::CountOccupiedDocks(b) < docks)
 			{
-				newBuilding = pBuilding;
-				newBuilding->Factory = currFactory;
-				newBuilding->IsPrimaryFactory = true;
-				this->CurrentAirFactory = newBuilding;
-
+				chosen = b;
+				chosen->Factory = currFactory;
+				chosen->IsPrimaryFactory = true;
+				this->CurrentAirFactory = chosen;
 				continue;
 			}
 		}
 
-		pBuilding->IsPrimaryFactory = false;
-
-		if (pBuilding->Factory)
+		b->IsPrimaryFactory = false;
+		if (b->Factory)
 		{
-			//auto const* prodType = pBuilding->Factory->Object->GetType();
-			pBuilding->Factory->AbandonProduction();
-			//Debug::Log("%s of %s abandonded production of %s due to redundancies\n", pBuilding->Type->ID, pOwner->PlainName, prodType->ID);
+			b->Factory->AbandonProduction();
 		}
 	}
-
-	return;
 }
 
 int BuildingExt::CountOccupiedDocks(BuildingClass* pBuilding)
@@ -355,42 +357,59 @@ bool BuildingExt::ExtData::HandleInfiltrate(HouseClass* pInfiltratorHouse, int m
 // For unit's weapons factory only
 void BuildingExt::KickOutStuckUnits(BuildingClass* pThis)
 {
-	auto buffer = CoordStruct::Empty;
-	pThis->GetExitCoords(&buffer, 0);
-
-	auto cell = CellClass::Coord2Cell(buffer);
-
-	const auto pType = pThis->Type;
-	const short start = static_cast<short>(pThis->Location.X / Unsorted::LeptonsPerCell + pType->GetFoundationWidth() - 2); // door
-	const short end = cell.X; // exit
-	cell.X = start;
-	auto pCell = MapClass::Instance.GetCellAt(cell);
-
-	while (true)
+	// 1) If the factory currently has a linked unit and it's stuck, free & send it to Guard.
+	if (auto* const pUnit = abstract_cast<UnitClass*>(pThis->GetNthLink()))
 	{
-		for (auto pObject = pCell->FirstObject; pObject; pObject = pObject->NextObject)
+		if (!pUnit->IsTether && pUnit->GetCurrentSpeed() <= 0)
 		{
-			if (const auto pUnit = abstract_cast<UnitClass*, true>(pObject))
-			{
-				if (pThis->Owner != pUnit->Owner || pUnit->Locomotor->Destination() != CoordStruct::Empty)
-					continue;
+			if (auto* const pTeam = pUnit->Team)
+				pTeam->LiberateMember(pUnit);
 
-				const auto height = pUnit->GetHeight();
+			pThis->SendCommand(RadioCommand::NotifyUnlink, pUnit);
+			pUnit->QueueMission(Mission::Guard, false);
+			return; // one-after-another
+		}
+	}
 
-				if (height < 0 || height > Unsorted::CellHeight)
-					continue;
+	// 2) Otherwise, scan the exit cell (and one neighbor to the East) for a same-house, non-tethered unit
+	//    that is within cell height. Link it and force an Unload.
+	CoordStruct buffer = CoordStruct::Empty;
+	CellClass* cell = MapClass::Instance.GetCellAt(*pThis->GetExitCoords(&buffer, 0));
+	if (!cell)
+		return;
 
-				pThis->SendCommand(RadioCommand::RequestLink, pUnit);
-				pThis->QueueMission(Mission::Unload, false);
-				return; // one after another
-			}
+	HouseClass* const pOwner = pThis->Owner;
+
+	// Check up to 2 cells: exit cell, then East neighbor.
+	for (int step = 0; step < 2 && cell; ++step)
+	{
+		for (auto* obj = cell->FirstObject; obj; obj = obj->NextObject)
+		{
+			if (obj->WhatAmI() != AbstractType::Unit)
+				continue;
+
+			auto* const unit = static_cast<UnitClass*>(obj);
+			if (unit->Owner != pOwner || unit->IsTether)
+				continue;
+
+			const int h = unit->GetHeight();
+			if (h < 0 || h > Unsorted::CellHeight)
+				continue;
+
+			if (auto* const team = unit->Team)
+				team->LiberateMember(unit);
+
+			pThis->SendCommand(RadioCommand::RequestLink, unit);
+			pThis->QueueMission(Mission::Unload, false);
+			return; // one-after-another
 		}
 
-		if (--cell.X < end)
-			return; // no stuck
-
-		pCell = MapClass::Instance.GetCellAt(cell);
+		// continue towards bottom-right per your original: move East once
+		if (step == 0)
+			cell = cell->GetNeighbourCell(FacingType::East);
 	}
+
+	// no stuck unit found → nothing to do
 }
 
 // Get all cells covered by the building, optionally including those covered by OccupyHeight.

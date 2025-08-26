@@ -13,6 +13,7 @@
 #include "Ext/WarheadType/Body.h"
 #include "Ext/WeaponType/Body.h"
 #include <Ext/Scenario/Body.h>
+#include "Ext/Sidebar/SWSidebar/UISafeOps.h"
 
 // ============= New SuperWeapon Effects================
 
@@ -60,7 +61,7 @@ void SWTypeExt::FireSuperWeaponExt(SuperClass* pSW, const CellStruct& cell)
 
 	if (!pTypeExt->SW_Link.empty())
 	{
-		pTypeExt->ApplyLinkedSW(pSW, cell);
+		pTypeExt->ApplyLinkedSW(pSW);
 	}
 
 	// Ares' Type=EMPulse SW
@@ -293,39 +294,35 @@ void SWTypeExt::ExtData::ApplyLimboKill(HouseClass* pHouse)
 
 void SWTypeExt::ExtData::ApplyDetonation(HouseClass* pHouse, const CellStruct& cell)
 {
-	if (!pHouse) { return; }
+	// Check cell first; no deref on invalid
+	if (!MapClass::Instance.CoordinatesLegal(cell))
+	{
+		const auto pWeapon = this->Detonate_Weapon;
+		const auto* id = pWeapon ? pWeapon->get_ID() : (this->Detonate_Warhead ? this->Detonate_Warhead->get_ID() : "NULL-WH");
+		Debug::Log("ApplyDetonation: Superweapon [%s] failed to detonate [%s] - invalid cell %d,%d.\n",
+			this->OwnerObject()->get_ID(), id, cell.X, cell.Y);
+		return;
+	}
 
-	auto* const cellClass = MapClass::Instance.GetCellAt(cell);
-	if (!cellClass) { return; }
+	// Now safe to fetch coords
+	auto* const pCell = MapClass::Instance.GetCellAt(cell);
+	auto coords = pCell->GetCoords();
 
-	auto coords = cellClass->GetCoords();
 	BuildingClass* pFirer = nullptr;
-
 	for (auto const& pBld : pHouse->Buildings)
 	{
-		if (this->IsLaunchSiteEligible(cell, pBld, false))
-		{
-			pFirer = pBld;
-			break;
-		}
+		if (this->IsLaunchSiteEligible(cell, pBld, /*ignoreRange*/false)) { pFirer = pBld; break; }
 	}
 
 	if (this->Detonate_AtFirer)
 		coords = pFirer ? pFirer->GetCenterCoords() : CoordStruct::Empty;
 
 	const auto pWeapon = this->Detonate_Weapon;
-	const auto mapCoords = CellClass::Coord2Cell(coords);
-
-	if (!MapClass::Instance.CoordinatesLegal(mapCoords))
-	{
-		auto const ID = pWeapon ? pWeapon->get_ID() : this->Detonate_Warhead->get_ID();
-		Debug::Log("ApplyDetonation: Superweapon [%s] failed to detonate [%s] - cell at %d, %d is invalid.\n",
-				   this->OwnerObject()->get_ID(), ID, mapCoords.X, mapCoords.Y);
-		return;
-	}
 
 	if (pWeapon)
+	{
 		WeaponTypeExt::DetonateAt(pWeapon, coords, pFirer, this->Detonate_Damage.Get(pWeapon->Damage), pHouse);
+	}
 	else
 	{
 		if (this->Detonate_Warhead_Full)
@@ -476,7 +473,7 @@ void SWTypeExt::ExtData::HandleEMPulseLaunch(SuperClass* pSW, const CellStruct& 
 	}
 }
 
-void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW, const CellStruct& cell)
+void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW)
 {
 	if (!pSW || !pSW->Owner) { return; }
 
@@ -486,18 +483,11 @@ void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW, const CellStruct& cell)
 	if (pHouse->Defeated || !notObserver)
 		return;
 
-	// Early exit if Grant=no - don't process any linked superweapons at all
-	if (!this->SW_Link_Grant)
-	{
-		return;
-	}
-
-	auto linkedSW = [=, &cell](const int swIdxToAdd)
+	auto linkedSW = [=](const int swIdxToAdd)
 		{
 			if (const auto pSuper = pHouse->Supers.GetItem(swIdxToAdd))
 			{
-
-				const bool granted = !pSuper->IsPresent && pSuper->Grant(true, false, false);
+				const bool granted = this->SW_Link_Grant && !pSuper->IsPresent && pSuper->Grant(true, false, false);
 				bool isActive = granted;
 
 				if (pSuper->IsPresent)
@@ -526,13 +516,7 @@ void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW, const CellStruct& cell)
 
 				if (granted && notObserver && pHouse->IsCurrentPlayer())
 				{
-					// Only add cameo if linked SW has SW.ShowCameo=yes
-					const auto pLinkedSWExt = SWTypeExt::ExtMap.Find(pSuper->Type);
-					if (pLinkedSWExt && pLinkedSWExt->SW_ShowCameo)
-					{
-						if (MouseClass::Instance.AddCameo(AbstractType::Special, swIdxToAdd))
-							MouseClass::Instance.RepaintSidebar(1);
-					}
+					UISafeOps::EnqueueAddCameo(swIdxToAdd);
 				}
 
 				return isActive;

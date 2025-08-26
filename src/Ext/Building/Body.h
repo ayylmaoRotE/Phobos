@@ -111,10 +111,3 @@ public:
 	static void KickOutStuckUnits(BuildingClass* pThis);
 	static const std::vector<CellStruct> GetFoundationCells(BuildingClass* pThis, CellStruct baseCoords, bool includeOccupyHeight = false);
 };
-
-class NOVTABLE FakeBuildingClass : public BuildingClass
-{
-public:
-	// Extended IsFactory method that supports AircraftType
-	bool _IsFactory();
-};

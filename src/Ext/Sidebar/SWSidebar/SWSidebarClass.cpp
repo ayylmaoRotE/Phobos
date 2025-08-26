@@ -36,7 +36,6 @@ bool SWSidebarClass::AddColumn()
 bool SWSidebarClass::RemoveColumn()
 {
 	auto& columns = this->Columns;
-
 	if (columns.empty())
 		return false;
 
@@ -141,10 +140,7 @@ bool SWSidebarClass::AddButton(int superIdx)
 
 	const auto pSWExt = SWTypeExt::ExtMap.Find(pSWType);
 
-	if (!pSWExt->SW_ShowCameo && pSWExt->SW_AutoFire)
-		return false;
-
-	if (!pSWExt->SuperWeaponSidebar_Allow.Get(RulesExt::Global()->SuperWeaponSidebar_AllowByDefault))
+	if (!pSWExt->SW_ShowCameo || !pSWExt->SuperWeaponSidebar_Allow.Get(RulesExt::Global()->SuperWeaponSidebar_AllowByDefault))
 		return false;
 
 	const unsigned int ownerBits = 1u << HouseClass::CurrentPlayer->Type->ArrayIndex;
@@ -163,9 +159,6 @@ bool SWSidebarClass::AddButton(int superIdx)
 
 	if (columns.empty() && !this->AddColumn())
 		return false;
-
-	if (std::ranges::any_of(columns, [superIdx](SWColumnClass* column) { return std::ranges::any_of(column->Buttons, [superIdx](SWButtonClass* button) { return button->SuperIndex == superIdx; }); }))
-		return true;
 
 	return columns.back()->AddButton(superIdx);
 }
@@ -230,9 +223,9 @@ void SWSidebarClass::SortButtons()
 	for (const auto& it : items) vec_Buttons.emplace_back(it.btn);
 
 	// 5) lay out back into columns (original placement logic)
-	const auto pTopPCX =
-		SideExt::ExtMap.TryFind(SideClass::Array.Items[ScenarioClass::Instance->PlayerSideIndex])
-		->SuperWeaponSidebar_TopPCX.GetSurface();
+	const auto* side = SideClass::Array.Items[ScenarioClass::Instance->PlayerSideIndex];
+	const auto* sideExt = side ? SideExt::ExtMap.TryFind(side) : nullptr;
+	const auto  pTopPCX = sideExt ? sideExt->SuperWeaponSidebar_TopPCX.GetSurface() : nullptr;
 
 	const int buttonCount = static_cast<int>(vec_Buttons.size());
 	const int cameoWidth = 60, cameoHeight = 48;
@@ -313,6 +306,7 @@ void SWSidebarClass::RecheckCameo()
 		~ScopeExit() noexcept { b = false; }
 	} _reset { InRecheck };
 
+
 	auto& sidebar = SWSidebarClass::Instance;
 	auto& super = HouseClass::CurrentPlayer->Supers;
 	bool& recheckTechTree = HouseClass::CurrentPlayer->RecheckTechTree;
@@ -337,7 +331,6 @@ void SWSidebarClass::RecheckCameo()
 			}
 
 			// Remove if SW.AuxTechnos.Required = true and requirements not met
-			// NOTE: This should remove from SWSidebar to let it fall back to main sidebar
 			if (const auto pSWType = SuperWeaponTypeClass::Array.GetItemOrDefault(idx))
 			{
 				if (const auto pSWExt = SWTypeExt::ExtMap.Find(pSWType))
@@ -354,40 +347,7 @@ void SWSidebarClass::RecheckCameo()
 			recheckTechTree = true;
 
 		for (const auto index : removeButtons)
-		{
-			// Check if this is a SW.AuxTechnos.Required removal that should keep tracking
-			bool keepTracking = false;
-			if (const auto pSWType = SuperWeaponTypeClass::Array.GetItemOrDefault(index))
-			{
-				if (const auto pSWExt = SWTypeExt::ExtMap.Find(pSWType))
-				{
-					if (pSWExt->SW_AuxTechnos_Required && super.ValidIndex(index) && super[index]->IsPresent)
-					{
-						keepTracking = true;
-					}
-				}
-			}
-
-			if (keepTracking)
-			{
-				// Remove button without affecting tracking list
-				auto& buttons = column->Buttons;
-				const auto it = std::find_if(buttons.begin(), buttons.end(), [index](SWButtonClass* const button) { return button->SuperIndex == index; });
-				if (it != buttons.end())
-				{
-					AnnounceInvalidPointer(SWSidebarClass::Instance.CurrentButton, *it);
-					const auto pButton = *it;
-					GScreenClass::Instance.RemoveButton(pButton);
-					GameDelete(pButton);
-					buttons.erase(it);
-				}
-			}
-			else
-			{
-				// Use normal RemoveButton which removes from tracking list
-				column->RemoveButton(index);
-			}
-		}
+			column->RemoveButton(index);
 	}
 
 	// pass 2: re-add missing cameos efficiently using a presence bitmap
@@ -407,26 +367,7 @@ void SWSidebarClass::RecheckCameo()
 	{
 		if (superIdx >= 0 && superIdx < SuperWeaponTypeClass::Array.Count && !present[superIdx])
 		{
-			// Check if SW is present and requirements are met before re-adding
-			if (super.ValidIndex(superIdx) && super[superIdx]->IsPresent)
-			{
-				if (const auto pSWType = SuperWeaponTypeClass::Array.GetItemOrDefault(superIdx))
-				{
-					if (const auto pSWExt = SWTypeExt::ExtMap.Find(pSWType))
-					{
-						// Only add if SW.AuxTechnos.Required is false OR requirements are met
-						if (!pSWExt->SW_AuxTechnos_Required || pSWExt->IsAvailable(HouseClass::CurrentPlayer))
-						{
-							sidebar.AddButton(superIdx);
-						}
-					}
-					else
-					{
-						// No extension found, add normally
-						sidebar.AddButton(superIdx);
-					}
-				}
-			}
+			sidebar.AddButton(superIdx);
 		}
 	}
 
@@ -457,55 +398,7 @@ DEFINE_HOOK(0x4F92FB, HouseClass_UpdateTechTree_SWSidebar, 0x7)
 	pHouse->AISupers();
 
 	if (pHouse->IsCurrentPlayer())
-	{
 		SWSidebarClass::RecheckCameo();
-		
-		// Also recheck main sidebar for SW.AuxTechnos.Required cameos that might need to be re-added
-		// Only run if RecheckTechTree flag was set (avoids unnecessary work)
-		if (pHouse->RecheckTechTree)
-		{
-			auto pSidebar = &SidebarClass::Instance;
-			const int superCount = pHouse->Supers.Count;
-			
-			for (int i = 0; i < superCount; i++)
-			{
-				auto pSuper = pHouse->Supers.GetItem(i);
-				if (!pSuper || !pSuper->IsPresent) continue;
-				
-				auto pSWExt = SWTypeExt::ExtMap.Find(pSuper->Type);
-				if (!pSWExt || !pSWExt->SW_AuxTechnos_Required) continue;
-				
-				// Fast availability check first (most likely to fail)
-				if (!pSWExt->IsAvailable(pHouse)) continue;
-				
-				// Check if already in main sidebar (cache-friendly single pass)
-				bool inMainSidebar = false;
-				for (int tab = 0; tab < 4; tab++)
-				{
-					auto& strip = pSidebar->Tabs[tab];
-					const int cameoCount = strip.CameoCount;
-					auto* cameos = strip.Cameos;
-					
-					for (int btn = 0; btn < cameoCount; btn++)
-					{
-						if (cameos[btn].ItemType == AbstractType::Special && cameos[btn].ItemIndex == i)
-						{
-							inMainSidebar = true;
-							goto next_super; // Break out of nested loops
-						}
-					}
-				}
-				
-				// Only try adding if not found and SWSidebar rejected it
-				if (!SWSidebarClass::Instance.AddButton(i))
-				{
-					pSidebar->AddCameo(AbstractType::Special, i);
-				}
-				
-				next_super:;
-			}
-		}
-	}
 
 	return SkipGameCode;
 }
@@ -521,56 +414,9 @@ DEFINE_HOOK(0x6A6316, SidebarClass_AddCameo_SuperWeapon_SWSidebar, 0x6)
 
 	GET_STACK(const int, index, STACK_OFFSET(0x14, 0x8));
 
-	// Always track eligible superweapons for rechecking
-	bool shouldTrackInSWSidebar = false;
-	bool shouldHideFromMainSidebar = false;
-
-	if (auto pPlayer = HouseClass::CurrentPlayer)
+	if (SWSidebarClass::Instance.AddButton(index))
 	{
-		if (auto pSuper = pPlayer->Supers.GetItemOrDefault(index))
-		{
-			if (auto pSWExt = SWTypeExt::ExtMap.Find(pSuper->Type))
-			{
-				// Check if this SW should be tracked by SWSidebar (basic eligibility)
-				if (pSWExt->SuperWeaponSidebar_Allow.Get(RulesExt::Global()->SuperWeaponSidebar_AllowByDefault))
-				{
-					const unsigned int ownerBits = 1u << pPlayer->Type->ArrayIndex;
-					if ((pSWExt->SuperWeaponSidebar_RequiredHouses & ownerBits) != 0 && 
-						pSWExt->SuperWeaponSidebar_Significance >= Phobos::Config::SuperWeaponSidebar_RequiredSignificance)
-					{
-						shouldTrackInSWSidebar = true;
-					}
-				}
-
-				// Check if should be hidden from main sidebar due to SW.AuxTechnos.Required
-				if (pSWExt->SW_AuxTechnos_Required && !pSWExt->IsAvailable(pPlayer))
-				{
-					shouldHideFromMainSidebar = true;
-				}
-			}
-		}
-	}
-
-	if (shouldTrackInSWSidebar)
-	{
-		// Always add to tracking list for rechecking
-		auto& indices = ScenarioExt::Global()->SWSidebar_Indices;
-		if (std::find(indices.begin(), indices.end(), index) == indices.end())
-		{
-			indices.emplace_back(index);
-		}
-
-		// Try to add to SWSidebar if requirements are met
-		if (SWSidebarClass::Instance.AddButton(index))
-		{
-			return ReturnFalse;
-		}
-		// If SWSidebar rejected it but requirements are met, fall through to main sidebar
-	}
-
-	// Hide from main sidebar if SW.AuxTechnos.Required and requirements not met
-	if (shouldHideFromMainSidebar)
-	{
+		ScenarioExt::Global()->SWSidebar_Indices.emplace_back(index);
 		return ReturnFalse;
 	}
 
@@ -585,41 +431,12 @@ DEFINE_HOOK(0x6AA790, StripClass_RecheckCameo_RemoveCameo, 0x6)
 	const auto pCurrent = HouseClass::CurrentPlayer;
 	const auto& supers = pCurrent->Supers;
 
-	// Only handle superweapons
-	if (pItem->ItemType != AbstractType::Special)
-		return 0;
-
 	if (supers.ValidIndex(pItem->ItemIndex) && supers[pItem->ItemIndex]->IsPresent)
 	{
-		// Check if we should remove from main sidebar for SW.AuxTechnos.Required
-		if (auto pSuper = supers[pItem->ItemIndex])
-		{
-			if (auto pSWExt = SWTypeExt::ExtMap.Find(pSuper->Type))
-			{
-				if (pSWExt->SW_AuxTechnos_Required && !pSWExt->IsAvailable(pCurrent))
-				{
-					// Remove from main sidebar since requirements not met
-					return ShouldRemove;
-				}
-			}
-		}
-
-		// Try to add to SWSidebar if possible
 		if (SWSidebarClass::Instance.AddButton(pItem->ItemIndex))
-		{
-			// Successfully added to SWSidebar, track it and remove from main sidebar
-			auto& indices = ScenarioExt::Global()->SWSidebar_Indices;
-			if (std::find(indices.begin(), indices.end(), pItem->ItemIndex) == indices.end())
-			{
-				indices.emplace_back(pItem->ItemIndex);
-			}
-			return ShouldRemove;
-		}
+			ScenarioExt::Global()->SWSidebar_Indices.emplace_back(pItem->ItemIndex);
 		else
-		{
-			// Couldn't add to SWSidebar, keep in main sidebar
 			return ShouldNotRemove;
-		}
 	}
 
 	return ShouldRemove;

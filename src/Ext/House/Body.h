@@ -8,7 +8,6 @@
 #include <Ext/Building/Body.h>
 
 #include <map>
-#include <unordered_map>
 
 class HouseExt
 {
@@ -62,8 +61,6 @@ public:
 		struct SWExt
 		{
 			int ShotCount;
-			int LastBattlePointsApplyFrame { -1 };
-			int LastCommanderPointsApplyFrame { -1 };
 		};
 		std::vector<SWExt> SuperExts;
 

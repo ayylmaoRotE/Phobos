@@ -15,7 +15,6 @@
 #include <Ext/Techno/Body.h>
 #include <Ext/WeaponType/Body.h>
 #include <New/Type/InsigniaTypeClass.h>
-#include <New/AnonymousType/GiftBoxFunctional.h>
 
 #include <Utilities/GeneralUtils.h>
 
@@ -144,121 +143,138 @@ bool TechnoTypeExt::ExtData::IsSecondary(int nWeaponIndex)
 
 int TechnoTypeExt::ExtData::SelectMultiWeapon(TechnoClass* const pThis, AbstractClass* const pTarget)
 {
+	// Keep original early exits. :contentReference[oaicite:1]{index=1}
 	if (!pTarget || !this->MultiWeapon.Get())
 		return -1;
 
 	const auto pType = this->OwnerObject();
-
 	if (pType->IsGattling || (pType->HasMultipleTurrets() && pType->Gunner))
 		return -1;
 
 	const int weaponCount = Math::min(pType->WeaponCount, this->MultiWeapon_SelectCount.Get());
-
-	if (weaponCount < 2)
-		return 0;
-	else if (weaponCount == 2)
-		return -1;
-
-	std::vector<bool> secondaryCanTargets {};
-	secondaryCanTargets.resize(weaponCount, false);
+	if (weaponCount < 2)  return 0;
+	if (weaponCount == 2) return -1;
 
 	const bool isElite = pThis->Veterancy.IsElite();
 	const bool noSecondary = this->NoSecondaryWeaponFallback.Get();
 
+	// --- perf: stack bitmask instead of heap vector<bool> ---
+	// bit i == 1  -> "skip index i in the primary pass" (same meaning as 'secondaryCanTargets[i] == true'). :contentReference[oaicite:2]{index=2}
+	uint64_t skipMask64 = 0ull;
+	auto markSkip = [&](int idx)
+		{
+			if (static_cast<unsigned>(idx) < 64u) skipMask64 |= (1ull << idx);
+		};
+	auto isSkipped = [&](int idx) -> bool
+		{
+			return (static_cast<unsigned>(idx) < 64u) ? ((skipMask64 >> idx) & 1ull) != 0ull : false;
+		};
+
+	// cache the target as Techno, if any (original logic) :contentReference[oaicite:3]{index=3}
 	if (const auto pTargetTechno = abstract_cast<TechnoClass*, true>(pTarget))
 	{
+		// dead/invalid → default to primary (original) :contentReference[oaicite:4]{index=4}
 		if (pTargetTechno->Health <= 0 || !pTargetTechno->IsAlive)
 			return 0;
 
 		bool getNavalTargeting = false;
 
-		auto checkSecondary = [&](int weaponIndex) -> bool
-		{
-			const auto pWeapon = TechnoTypeExt::GetWeaponType(pType, weaponIndex, isElite);
-
-			if (!pWeapon || pWeapon->NeverUse)
+		// perf: avoid duplicate GetWeaponType calls by caching when we touch an index
+		// (not strictly necessary, but keeps the hot path tight)
+		auto checkSecondary = [&](int weaponIndex, WeaponTypeClass* pWeaponCached = nullptr) -> bool
 			{
-				secondaryCanTargets[weaponIndex] = true;
+				const auto pWeapon = pWeaponCached ? pWeaponCached : TechnoTypeExt::GetWeaponType(pType, weaponIndex, isElite);
+
+				if (!pWeapon || pWeapon->NeverUse)
+				{
+					markSkip(weaponIndex);
+					return false;
+				}
+
+				bool secondaryPriority = getNavalTargeting;
+
+				if (!getNavalTargeting)
+				{
+					const auto pWH = pWeapon->Warhead;
+					const bool isAllies = pThis->Owner->IsAlliedWith(pTargetTechno->Owner);
+					const bool isInAir = pTargetTechno->IsInAir();
+
+					if (pWH->Airstrike)
+					{
+						// Can it attack the air force now? (preserve exact fallback flags) :contentReference[oaicite:5]{index=5}
+						secondaryPriority = isInAir ? !this->NoSecondaryWeaponFallback_AllowAA.Get() : !noSecondary;
+					}
+					else if (isInAir)
+					{
+						secondaryPriority = !this->NoSecondaryWeaponFallback_AllowAA.Get();
+					}
+					else if (pWeapon->DrainWeapon
+						&& pTargetTechno->GetTechnoType()->Drainable
+						&& !pThis->DrainTarget && !isAllies)
+					{
+						secondaryPriority = !noSecondary;
+					}
+					else if (pWH->ElectricAssault && isAllies
+						&& pTargetTechno->WhatAmI() == AbstractType::Building
+						&& static_cast<BuildingClass*>(pTargetTechno)->Type->Overpowerable)
+					{
+						secondaryPriority = !noSecondary;
+					}
+				}
+
+				if (secondaryPriority)
+				{
+					// try secondary first; if it *can’t* fire, mark to skip in the primary pass (original semantics) :contentReference[oaicite:6]{index=6}
+					if (TechnoExt::MultiWeaponCanFire(pThis, pTargetTechno, pWeapon))
+						return true;
+
+					markSkip(weaponIndex);
+					return false;
+				}
+
 				return false;
-			}
+			};
 
-			bool secondaryPriority = getNavalTargeting;
-
-			if (!getNavalTargeting)
-			{
-				const auto pWH = pWeapon->Warhead;
-				const bool isAllies = pThis->Owner->IsAlliedWith(pTargetTechno->Owner);
-				const bool isInAir = pTargetTechno->IsInAir();
-
-				if (pWH->Airstrike)
-				{
-					// Can it attack the air force now?
-					secondaryPriority = isInAir ? !this->NoSecondaryWeaponFallback_AllowAA.Get() : !noSecondary;
-				}
-				else if (isInAir)
-				{
-					secondaryPriority = !this->NoSecondaryWeaponFallback_AllowAA.Get();
-				}
-				else if (pWeapon->DrainWeapon
-					&& pTargetTechno->GetTechnoType()->Drainable
-					&& !pThis->DrainTarget && !isAllies)
-				{
-					secondaryPriority = !noSecondary;
-				}
-				else if (pWH->ElectricAssault && isAllies
-					&& pTargetTechno->WhatAmI() == AbstractType::Building
-					&& static_cast<BuildingClass*>(pTargetTechno)->Type->Overpowerable)
-				{
-					secondaryPriority = !noSecondary;
-				}
-			}
-
-			if (secondaryPriority)
-			{
-				if (TechnoExt::MultiWeaponCanFire(pThis, pTargetTechno, pWeapon))
-					return true;
-
-				secondaryCanTargets[weaponIndex] = true;
-				return false;
-			}
-
-			return false;
-		};
-
-		const LandType landType = pTargetTechno->GetCell()->LandType;
-		const bool targetOnWater = landType == LandType::Water || landType == LandType::Beach;
-
-		if (!pTargetTechno->OnBridge && targetOnWater)
+		// Determine naval targeting once (original flow) — guard GetCell() for safety. :contentReference[oaicite:7]{index=7}
+		if (auto* const pCell = pTargetTechno->GetCell())
 		{
-			const int result = pThis->SelectNavalTargeting(pTargetTechno);
+			const LandType landType = pCell->LandType;
+			const bool targetOnWater = (landType == LandType::Water) || (landType == LandType::Beach);
 
-			if (result != -1)
-				getNavalTargeting = (result == 1);
+			if (!pTargetTechno->OnBridge && targetOnWater)
+			{
+				const int result = pThis->SelectNavalTargeting(pTargetTechno);
+				if (result != -1)
+					getNavalTargeting = (result == 1);
+			}
 		}
 
-		const bool getSecondaryList = !this->MultiWeapon_IsSecondary.empty();
+		const bool hasSecondaryList = !this->MultiWeapon_IsSecondary.empty();
 
-		for (int index = getSecondaryList ? 0 : 1; index < weaponCount; index++)
+		// original iteration order preserved (either [0..N) filtered by list, or [1..N) when no list) :contentReference[oaicite:8]{index=8}
+		for (int idx = hasSecondaryList ? 0 : 1; idx < weaponCount; ++idx)
 		{
-			if (getSecondaryList && !this->MultiWeapon_IsSecondary[index])
+			if (hasSecondaryList && !this->MultiWeapon_IsSecondary[idx])
 				continue;
 
-			if (checkSecondary(index))
-				return index;
+			if (checkSecondary(idx))
+				return idx;
 		}
 	}
 	else if (noSecondary)
 	{
+		// non-techno targets with no-secondary fallback → primary (unchanged) :contentReference[oaicite:9]{index=9}
 		return 0;
 	}
 
-	for (int index = 0; index < weaponCount; index++)
+	// Primary pass: try any index that wasn't proven “skip” above. Keep order & conditions identical. :contentReference[oaicite:10]{index=10}
+	for (int idx = 0; idx < weaponCount; ++idx)
 	{
-		if (secondaryCanTargets[index])
+		if (isSkipped(idx))
 			continue;
 
-		if (TechnoExt::MultiWeaponCanFire(pThis, pTarget, TechnoTypeExt::GetWeaponType(pType, index, isElite)))
-			return index;
+		if (TechnoExt::MultiWeaponCanFire(pThis, pTarget, TechnoTypeExt::GetWeaponType(pType, idx, isElite)))
+			return idx;
 	}
 
 	return 0;
@@ -796,7 +812,7 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->DeployFireWeapon.Read(exINI, pSection, "DeployFireWeapon");
 	this->TargetZoneScanType.Read(exINI, pSection, "TargetZoneScanType");
 
-	// insignia type
+		// insignia type
 	Nullable<InsigniaTypeClass*> InsigniaType;
 	InsigniaType.Read(exINI, pSection, "InsigniaType");
 
@@ -874,14 +890,6 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->BuildLimitGroup_ExtraLimit_Nums.Read(exINI, pSection, "BuildLimitGroup.ExtraLimit.Nums");
 	this->BuildLimitGroup_ExtraLimit_MaxCount.Read(exINI, pSection, "BuildLimitGroup.ExtraLimit.MaxCount");
 	this->BuildLimitGroup_ExtraLimit_MaxNum.Read(exINI, pSection, "BuildLimitGroup.ExtraLimit.MaxNum");
-
-	// Build time customization
-	this->BuildTime_Speed.Read(exINI, pSection, "BuildTime.Speed");
-	this->BuildTime_Cost.Read(exINI, pSection, "BuildTime.Cost");
-	this->BuildTime_LowPowerPenalty.Read(exINI, pSection, "BuildTime.LowPowerPenalty");
-	this->BuildTime_MinLowPower.Read(exINI, pSection, "BuildTime.MinLowPower");
-	this->BuildTime_MaxLowPower.Read(exINI, pSection, "BuildTime.MaxLowPower");
-	this->BuildTime_MultipleFactory.Read(exINI, pSection, "BuildTime.MultipleFactory");
 
 	this->AmphibiousEnter.Read(exINI, pSection, "AmphibiousEnter");
 	this->AmphibiousUnload.Read(exINI, pSection, "AmphibiousUnload");
@@ -967,7 +975,6 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->ExtendedAircraftMissions_SmoothMoving.Read(exINI, pSection, "ExtendedAircraftMissions.SmoothMoving");
 	this->ExtendedAircraftMissions_EarlyDescend.Read(exINI, pSection, "ExtendedAircraftMissions.EarlyDescend");
 	this->ExtendedAircraftMissions_RearApproach.Read(exINI, pSection, "ExtendedAircraftMissions.RearApproach");
-	this->NoAirportBound_DisableRadioContact.Read(exINI, pSection, "NoAirportBound.DisableRadioContact");
 
 	this->FallingDownDamage.Read(exINI, pSection, "FallingDownDamage");
 	this->FallingDownDamage_Water.Read(exINI, pSection, "FallingDownDamage.Water");
@@ -989,10 +996,6 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 
 	this->InfantryAutoDeploy.Read(exINI, pSection, "InfantryAutoDeploy");
 
-	// GiftBox feature
-	this->MyGiftBoxData.Read(exINI, pSection);
-
-	
 	// Ares 0.2
 	this->RadarJamRadius.Read(exINI, pSection, "RadarJamRadius");
 
@@ -1122,6 +1125,8 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->ShadowIndex_Frame.Read(exArtINI, pArtSection, "ShadowIndex.Frame");
 
 	this->LaserTrailData.clear();
+	// Small pre-reserve to reduce reallocations; behavior unchanged
+	this->LaserTrailData.reserve(this->LaserTrailData.capacity() ? this->LaserTrailData.capacity() : 4);
 	for (size_t i = 0; ; ++i)
 	{
 		NullableIdx<LaserTrailTypeClass> trail;
@@ -1159,6 +1164,7 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->ExtraFire_SecondaryFLH.Read(exArtINI, pArtSection, "ExtraFire.SecondaryFLH");
 	this->ExtraFire_ElitePrimaryFLH.Read(exArtINI, pArtSection, "ExtraFire.ElitePrimaryFLH");
 	this->ExtraFire_EliteSecondaryFLH.Read(exArtINI, pArtSection, "ExtraFire.EliteSecondaryFLH");
+
 
 	for (size_t i = 0; ; i++)
 	{
@@ -1238,14 +1244,14 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	if (GeneralUtils::IsValidString(pThis->PaletteFile) && !pThis->Palette)
 		Debug::Log("[Developer warning] [%s] has Palette=%s set but no palette file was loaded (missing file or wrong filename). Missing palettes cause issues with lighting recalculations.\n", pArtSection, pThis->PaletteFile);
 
-	this->LoadFromINIByWhatAmI(exINI, pSection, exArtINI, pArtSection);
+	this->LoadFromINIByWhatAmI(exArtINI, pArtSection);
 
 	// VoiceIFVRepair from Ares 0.2
 	this->VoiceIFVRepair.Read(exINI, pSection, "VoiceIFVRepair");
 	this->ParseVoiceWeaponAttacks(exINI, pSection, this->VoiceWeaponAttacks, this->VoiceEliteWeaponAttacks);
 }
 
-void TechnoTypeExt::ExtData::LoadFromINIByWhatAmI(INI_EX& exINI, const char* pSection, INI_EX& exArtINI, const char* pArtSection)
+void TechnoTypeExt::ExtData::LoadFromINIByWhatAmI(INI_EX& exArtINI, const char* pArtSection)
 {
 	AbstractType abs = this->OwnerObject()->WhatAmI();
 
@@ -1255,7 +1261,6 @@ void TechnoTypeExt::ExtData::LoadFromINIByWhatAmI(INI_EX& exINI, const char* pSe
 	{
 		this->FireUp.Read(exArtINI, pArtSection, "FireUp");
 		this->FireUp_ResetInRetarget.Read(exArtINI, pArtSection, "FireUp.ResetInRetarget");
-		this->TurretResponse.Read(exINI, pSection, "TurretResponse");
 		//this->SecondaryFire.Read(exArtINI, pArtSection, "SecondaryFire");
 		break;
 	}
@@ -1622,14 +1627,6 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->BuildLimitGroup_ExtraLimit_MaxCount)
 		.Process(this->BuildLimitGroup_ExtraLimit_MaxNum)
 
-		// Build time customization
-		.Process(this->BuildTime_Speed)
-		.Process(this->BuildTime_Cost)
-		.Process(this->BuildTime_LowPowerPenalty)
-		.Process(this->BuildTime_MinLowPower)
-		.Process(this->BuildTime_MaxLowPower)
-		.Process(this->BuildTime_MultipleFactory)
-
 		.Process(this->AmphibiousEnter)
 		.Process(this->AmphibiousUnload)
 		.Process(this->NoQueueUpToEnter)
@@ -1714,7 +1711,6 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->ExtendedAircraftMissions_SmoothMoving)
 		.Process(this->ExtendedAircraftMissions_EarlyDescend)
 		.Process(this->ExtendedAircraftMissions_RearApproach)
-		.Process(this->NoAirportBound_DisableRadioContact)
 
 		.Process(this->FallingDownDamage)
 		.Process(this->FallingDownDamage_Water)
@@ -1749,18 +1745,12 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 
 		.Process(this->InfantryAutoDeploy)
 		
-		.Process(this->MyGiftBoxData)
-
-		.Process(this->TurretResponse)
 		;
 }
 void TechnoTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
 {
 	Extension<TechnoTypeClass>::LoadFromStream(Stm);
 	this->Serialize(Stm);
-	
-	// Note: GiftBox pointer reconstruction now happens in CompleteInitialization
-	// after all TechnoTypes are loaded to avoid timing issues
 }
 
 void TechnoTypeExt::ExtData::SaveToStream(PhobosStreamWriter& Stm)
@@ -1857,9 +1847,4 @@ DEFINE_HOOK(0x747E90, UnitTypeClass_LoadFromINI, 0x5)
 	}
 
 	return 0;
-}
-
-void TechnoTypeExt::ExtData::CompleteInitialization()
-{
-	// No longer needed - GiftBox reconstructs from INI automatically when accessed
 }

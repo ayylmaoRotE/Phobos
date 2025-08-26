@@ -3,7 +3,6 @@
 #include <Ext/House/Body.h>
 #include <Utilities/GeneralUtils.h>
 #include <Ext/SWType/Body.h>
-#include <cmath>
 
 BuildingTypeExt::ExtContainer BuildingTypeExt::ExtMap;
 
@@ -265,7 +264,19 @@ void BuildingTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->IsAnimDelayedBurst.Read(exArtINI, pArtSection, "IsAnimDelayedBurst");
 	this->ZShapePointMove_OnBuildup.Read(exArtINI, pArtSection, "ZShapePointMove.OnBuildup");
 
-	// SpeedBonus
+
+
+	//Engicap
+	this->AICaptureSell_Enable.Read(exINI, pSection, "AICaptureSell.Enable");
+	this->AICaptureSell_Chance.Read(exINI, pSection, "AICaptureSell.Chance");
+	this->AICaptureSell_RespectUnsellable.Read(exINI, pSection, "AICaptureSell.RespectUnsellable");
+	this->AICaptureSell_HealthBelowPercent.Read(exINI, pSection, "AICaptureSell.HealthBelowPercent");
+
+	// hard clamp chance (safety), same style as other clamps (e.g., InitialStrength)
+	this->AICaptureSell_Chance = Math::clamp(
+		static_cast<int>(this->AICaptureSell_Chance), 0, 100);
+
+	this->AICaptureSell_HealthBelowPercent = Math::clamp(static_cast<int>(this->AICaptureSell_HealthBelowPercent), 1, 100);
 }
 
 void BuildingTypeExt::ExtData::CompleteInitialization()
@@ -342,6 +353,10 @@ void BuildingTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->BattlePointsCollector)
 		.Process(this->CommanderPointsCollector)
 		.Process(this->HasPowerUpAnim)
+		.Process(this->AICaptureSell_Enable)
+		.Process(this->AICaptureSell_Chance)
+		.Process(this->AICaptureSell_RespectUnsellable)
+		.Process(this->AICaptureSell_HealthBelowPercent)
 		;
 }
 
@@ -402,7 +417,6 @@ DEFINE_HOOK(0x45E707, BuildingTypeClass_DTOR, 0x6)
 	BuildingTypeExt::ExtMap.Remove(pItem);
 	return 0;
 }
-
 
 DEFINE_HOOK_AGAIN(0x465300, BuildingTypeClass_SaveLoad_Prefix, 0x5)
 DEFINE_HOOK(0x465010, BuildingTypeClass_SaveLoad_Prefix, 0x5)

@@ -7,16 +7,6 @@
 #include <Utilities/AresHelper.h>
 #include <Helpers/Macro.h>
 
-// stable, single-pass erase of the first matching pointer; preserves order
-template<typename T>
-static __forceinline void stable_erase_first(std::vector<T*>& v, T* value)
-{
-	for (size_t i = 0, n = v.size(); i < n; ++i)
-	{
-		if (v[i] == value) { v.erase(v.begin() + i); return; }
-	}
-}
-
 namespace BoltTemp
 {
 	EBoltExt::ExtData* ExtData = nullptr;
@@ -139,7 +129,7 @@ void EBoltFake::_RemoveFromOwner()
 {
 	auto const pExt = TechnoExt::ExtMap.Find(this->Owner);
 	auto& vec = pExt->ElectricBolts;
-	stable_erase_first(vec, static_cast<EBolt*>(this)); // Performance optimization: was erase(remove(...))
+	vec.erase(std::remove(vec.begin(), vec.end(), this), vec.end());
 	this->Owner = nullptr;
 }
 

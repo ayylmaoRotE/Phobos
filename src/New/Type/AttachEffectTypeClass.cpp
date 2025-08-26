@@ -1,4 +1,6 @@
 #include "AttachEffectTypeClass.h"
+#include <algorithm>   // sort, unique
+#include <cstring>     // _stricmp
 
 // Used to match groups names to AttachEffectTypeClass instances. Do not iterate due to undetermined order being prone to desyncs.
 std::unordered_map<std::string, std::set<AttachEffectTypeClass*>> AttachEffectTypeClass::GroupsMap;
@@ -37,19 +39,41 @@ bool AttachEffectTypeClass::HasGroups(const std::vector<std::string>& groupIDs, 
 
 std::vector<AttachEffectTypeClass*> AttachEffectTypeClass::GetTypesFromGroups(const std::vector<std::string>& groupIDs)
 {
-	std::set<AttachEffectTypeClass*> types;
+	// Gather pointers from all groups (order in each set is pointer-ordered and may differ per client).
 	auto const map = &AttachEffectTypeClass::GroupsMap;
+	std::vector<AttachEffectTypeClass*> types;
+	size_t reserveCount = 0;
 
 	for (auto const& group : groupIDs)
 	{
 		if (map->contains(group))
 		{
-			auto const values = &map->at(group);
-			types.insert(values->begin(), values->end());
+			reserveCount += map->at(group).size();
+		}
+	}
+	types.reserve(reserveCount);
+
+	for (auto const& group : groupIDs)
+	{
+		if (map->contains(group))
+		{
+			auto const& values = map->at(group);
+			types.insert(types.end(), values.begin(), values.end());
 		}
 	}
 
-	return std::vector<AttachEffectTypeClass*>(types.begin(), types.end());
+	// 🔒 Determinize: sort by stable key (type name), then dedupe.
+	std::sort(types.begin(), types.end(),
+		[](const AttachEffectTypeClass* a, const AttachEffectTypeClass* b)
+		{
+			// names come from INI; using case-insensitive compare for friendly grouping, consistent with other INI reads
+			return _stricmp(a->Name, b->Name) < 0;
+		});
+
+	types.erase(std::unique(types.begin(), types.end()),
+		types.end());
+
+	return types;
 }
 
 AnimTypeClass* AttachEffectTypeClass::GetCumulativeAnimation(int cumulativeCount) const

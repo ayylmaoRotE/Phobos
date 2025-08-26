@@ -7,7 +7,6 @@
 #include <Utilities/Container.h>
 #include <Utilities/TemplateDef.h>
 
-
 class BuildingTypeExt
 {
 public:
@@ -34,7 +33,6 @@ public:
 		Valueable<bool> Refinery_UseStorage;
 		Valueable<PartialVector2D<double>> InitialStrength_Cloning;
 		Valueable<bool> ExcludeFromMultipleFactoryBonus;
-
 
 		ValueableIdx<VocClass> Grinding_Sound;
 		Valueable<WeaponTypeClass*> Grinding_Weapon;
@@ -105,6 +103,11 @@ public:
 		Nullable<bool> BattlePointsCollector;
 		Nullable<bool> CommanderPointsCollector;
 
+		Valueable<bool> AICaptureSell_Enable;            // default false
+		Valueable<int>  AICaptureSell_Chance;            // 0..100, default 0
+		Valueable<bool> AICaptureSell_RespectUnsellable; // default true
+		Valueable<int>  AICaptureSell_HealthBelowPercent;
+
 		ExtData(BuildingTypeClass* OwnerObject) : Extension<BuildingTypeClass>(OwnerObject)
 			, PowersUp_Owner { AffectedHouse::Owner }
 			, PowersUp_Buildings {}
@@ -169,13 +172,16 @@ public:
 			, HasPowerUpAnim {}
 			, BattlePointsCollector {}
 			, CommanderPointsCollector {}
+			, AICaptureSell_Enable { false }
+			, AICaptureSell_Chance { 0 }
+			, AICaptureSell_RespectUnsellable { true }
+			, AICaptureSell_HealthBelowPercent { 34 }
 		{ }
 
 		// Ares 0.A functions
 		int GetSuperWeaponCount() const;
 		int GetSuperWeaponIndex(int index, HouseClass* pHouse) const;
 		int GetSuperWeaponIndex(int index) const;
-
 
 		virtual ~ExtData() = default;
 

@@ -52,4 +52,20 @@ public:
 private:
 	template <typename T>
 	bool Serialize(T& stm);
+
+	// Fast helpers (header-only to enable inlining on old compilers)
+	static inline long long DistSq3D(const CoordStruct& a, const CoordStruct& b)
+	{
+		const int dx = a.X - b.X;
+		const int dy = a.Y - b.Y;
+		const int dz = a.Z - b.Z;
+		return 1LL * dx * dx + 1LL * dy * dy + 1LL * dz * dz;
+	}
+
+	static inline int clampInt(int v, int lo, int hi)
+	{
+		if (v < lo) return lo;
+		if (v > hi) return hi;
+		return v;
+	}
 };

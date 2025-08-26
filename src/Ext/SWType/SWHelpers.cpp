@@ -324,26 +324,26 @@ void SWTypeExt::ExtData::PrintMessage(const CSFText& message, HouseClass* pFirer
 
 CellStruct SWTypeExt::ExtData::GetAuxTechnoTarget(HouseClass* pHouse) const
 {
-	if (!this->SW_AuxTechnos.empty())
+	if (this->SW_AuxTechnos.empty())
+		return CellStruct::Empty;
+
+	for (auto* pTechno : TechnoClass::Array)
 	{
-		for (auto pTechno : TechnoClass::Array)
-		{
-			if (pTechno->IsAlive && pTechno->Health && !pTechno->InLimbo && !pTechno->Deactivated)
-			{
-				auto nLoc = pTechno->GetCoords();
-				auto nLocCell = CellClass::Coord2Cell(nLoc);
+		//  cheapest checks first
+		if (!pTechno->IsAlive || !pTechno->Health || pTechno->InLimbo || pTechno->Deactivated)
+			continue;
 
-				if (nLoc == CoordStruct::Empty || nLocCell == CellStruct::Empty)
-					continue;
+		//  skip coords work unless type matches
+		if (!this->SW_AuxTechnos.Contains(pTechno->GetTechnoType()))
+			continue;
 
-				if (this->SW_AuxTechnos.Contains(pTechno->GetTechnoType()))
-				{
-					return nLocCell;
-				}
-			}
-		}
+		//  now resolve coords
+		const auto nLoc = pTechno->GetCoords();
+		const auto nLocCell = CellClass::Coord2Cell(nLoc);
+
+		if (nLoc != CoordStruct::Empty && nLocCell != CellStruct::Empty)
+			return nLocCell;
 	}
-
 	return CellStruct::Empty;
 }
 

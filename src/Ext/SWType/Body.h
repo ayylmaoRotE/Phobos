@@ -110,11 +110,6 @@ public:
 		Valueable<int> BattlePoints_Amount;
 		Valueable<int> CommanderPoints_Amount;
 
-		// Custom gclock animation
-		PhobosFixedString<0x20> SidebarGClockImage;
-		Valueable<bool> SidebarGClockTranslucent;
-		Valueable<int> SidebarGClockTranslucentLevel;
-
 		ValueableIdxVector<SuperWeaponTypeClass> SW_Link;
 		Valueable<bool> SW_Link_Grant;
 		Valueable<bool> SW_Link_Ready;
@@ -195,9 +190,6 @@ public:
 			, EMPulse_TargetSelf { false }
 			, BattlePoints_Amount { 0 }
 			, CommanderPoints_Amount { 0 }
-			, SidebarGClockImage { "" }
-			, SidebarGClockTranslucent { true }
-			, SidebarGClockTranslucentLevel { 50 }
 			, SW_Link {}
 			, SW_Link_Grant { false }
 			, SW_Link_Ready { false }
@@ -233,7 +225,7 @@ public:
 		void ApplyBattlePoints(SuperClass* pSW);
 		void ApplyCommanderPoints(SuperClass* pSW);
 
-		void ApplyLinkedSW(SuperClass* pSW, const CellStruct& cell);
+		void ApplyLinkedSW(SuperClass* pSW);
 
 		CellStruct GetAuxTechnoTarget(HouseClass* pHouse) const;
 		bool ShouldUseAITargeting() const;

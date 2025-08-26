@@ -12,7 +12,6 @@
 #include "SaveVariablesToFile.h"
 #include "ToggleSWSidebar.h"
 #include "FireTacticalSW.h"
-#include "ShowTechnoNames.h"
 #include <Ext/Sidebar/SWSidebar/SWSidebarClass.h>
 
 DEFINE_HOOK(0x533066, CommandClassCallback_Register, 0x6)
@@ -44,7 +43,6 @@ DEFINE_HOOK(0x533066, CommandClassCallback_Register, 0x6)
 		MakeCommand<DamageDisplayCommandClass>();
 		MakeCommand<SaveVariablesToFileCommandClass>();
 		MakeCommand<ObjectInfoCommandClass>();
-		MakeCommand<ShowTechnoNamesCommandClass>();
 		MakeCommand<FrameByFrameCommandClass>();
 		MakeCommand<FrameStepCommandClass<1>>(); // Single step in
 		MakeCommand<FrameStepCommandClass<5>>(); // Speed 1

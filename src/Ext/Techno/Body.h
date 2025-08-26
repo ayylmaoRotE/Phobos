@@ -9,7 +9,7 @@
 #include <New/Entity/ShieldClass.h>
 #include <New/Entity/LaserTrailClass.h>
 #include <New/Entity/AttachEffectClass.h>
-#include <New/AnonymousType/GiftBox.h>
+#include <Utilities/Savegame.h>
 
 class BulletClass;
 
@@ -90,10 +90,30 @@ public:
 
 		int AttackMoveFollowerTempCount;
 
+		// ========= Harvester Auto-Return (runtime) =========
+		CDTimerClass Harvester_AutoReturn_CombatTimer;    // set on damage, gates auto-return
+		CDTimerClass Harvester_AutoReturn_IssueCooldown;  // back-off after issuing auto-return
+		bool         Harvester_AutoReturn_Suppressed : 1; // set by Stop; cleared by manual orders
+
+		// byte of flags (serializer-friendly)
+		unsigned char Harvester_AutoReturn_Flags;
+
+		// flag bit
+		static constexpr unsigned char HarvAuto_Flag_Suppressed = 1u << 0;
+
+		// helpers
+		__forceinline bool Harvester_AutoReturn_IsSuppressed() const noexcept
+		{
+			return (this->Harvester_AutoReturn_Flags & HarvAuto_Flag_Suppressed) != 0;
+		}
+		__forceinline void Harvester_AutoReturn_SetSuppressed(bool v) noexcept
+		{
+			if (v) { this->Harvester_AutoReturn_Flags |= HarvAuto_Flag_Suppressed; }
+			else { this->Harvester_AutoReturn_Flags &= (unsigned char)~HarvAuto_Flag_Suppressed; }
+		}
+
 		// ExtraFire ROF timers - not serialized, reset on load
 		std::map<WeaponTypeClass*, CDTimerClass> ExtraFireTimers;
-
-		std::unique_ptr<GiftBox> MyGiftBox;
 
 		ExtData(TechnoClass* OwnerObject) : Extension<TechnoClass>(OwnerObject)
 			, TypeExtData { nullptr }
@@ -153,6 +173,9 @@ public:
 			, TintIntensityEnemies { 0 }
 			, AttackMoveFollowerTempCount { 0 }
 			, ExtraFireTimers {}
+			, Harvester_AutoReturn_CombatTimer { 90 }
+			, Harvester_AutoReturn_IssueCooldown { 200 }
+			, Harvester_AutoReturn_Flags { 0 }
 		{ }
 
 		void OnEarlyUpdate();
@@ -190,6 +213,8 @@ public:
 		int ApplyForceWeaponInRange(AbstractClass* pTarget);
 		void ResetDelayedFireTimer();
 		void UpdateTintValues();
+
+		void UpdateHarvesterAutoReturn();
 
 		virtual ~ExtData() override;
 		virtual void InvalidatePointer(void* ptr, bool bRemoved) override;
@@ -272,7 +297,6 @@ public:
 	static bool IsHealthInThreshold(TechnoClass* pObject, double min, double max);
 	static UnitTypeClass* GetUnitTypeExtra(UnitClass* pUnit);
 	static AircraftTypeClass* GetAircraftTypeExtra(AircraftClass* pAircraft);
-	static bool CannotMove(UnitClass* pThis);
 
 	// WeaponHelpers.cpp
 	static int PickWeaponIndex(TechnoClass* pThis, TechnoClass* pTargetTechno, AbstractClass* pTarget, int weaponIndexOne, int weaponIndexTwo, bool allowFallback = true, bool allowAAFallback = true);
