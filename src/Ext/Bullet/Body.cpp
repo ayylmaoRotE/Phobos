@@ -282,8 +282,8 @@ inline void BulletExt::SimulatedFiringParticleSystem(BulletClass* pBullet, House
 	}
 }
 
-// Make sure pBullet is not empty before call
-void BulletExt::SimulatedFiringUnlimbo(BulletClass* pBullet, HouseClass* pHouse, WeaponTypeClass* pWeapon, const CoordStruct& sourceCoords, bool randomVelocity)
+void BulletExt::SimulatedFiringUnlimbo(BulletClass* pBullet, HouseClass* pHouse,
+	WeaponTypeClass* pWeapon, const CoordStruct& sourceCoords, bool randomVelocity)
 {
 	// Weapon
 	pBullet->WeaponType = pWeapon;
@@ -304,49 +304,70 @@ void BulletExt::SimulatedFiringUnlimbo(BulletClass* pBullet, HouseClass* pHouse,
 	// Velocity
 	auto velocity = BulletVelocity::Empty;
 
-	// If someone asks me, I would say Arcing is just a piece of shit
-	// But there are still people who like to use it, so anyway, it has been fixed
 	if (pType->Arcing)
 	{
-		// The target must exist during launch
+		// (UNCHANGED) — arcing fix identical to your file
 		const auto targetCoords = pBullet->Target->GetCenterCoords();
 		const auto gravity = BulletTypeExt::GetAdjustedGravity(pType);
 		const auto distanceCoords = targetCoords - sourceCoords;
-		const auto horizontalDistance = Point2D { distanceCoords.X, distanceCoords.Y }.Magnitude();
-		const bool lobber = pWeapon->Lobber || static_cast<int>(horizontalDistance) < distanceCoords.Z; // 0x70D590
-		// The lower the horizontal velocity, the higher the trajectory
-		// WW calculates the launch angle (and limits it) before calculating the velocity
-		// Here, some magic numbers are used to directly simulate its calculation
-		const auto speedMult = (lobber ? 0.45 : (distanceCoords.Z > 0 ? 0.68 : 1.0)); // Simulated 0x48A9D0
-		const auto speed = speedMult * sqrt(horizontalDistance * gravity * 1.2); // 0x48AB90
+		const auto horizontalDist = Point2D { distanceCoords.X, distanceCoords.Y }.Magnitude();
+		const bool lobber = pWeapon->Lobber || static_cast<int>(horizontalDist) < distanceCoords.Z;
+		const auto speedMult = (lobber ? 0.45 : (distanceCoords.Z > 0 ? 0.68 : 1.0));
+		const auto speed = speedMult * std::sqrt(horizontalDist * gravity * 1.2);
 
-		// Simulate firing Arcing bullet
-		if (horizontalDistance < 1e-10 || speed < 1e-10)
+		if (horizontalDist < 1e-10 || speed < 1e-10)
 		{
-			// No solution
-			velocity.Z = speed;
+			velocity.Z = speed; // no solution
 		}
 		else
 		{
-			const auto mult = speed / horizontalDistance;
+			const auto mult = speed / horizontalDist;
 			velocity.X = static_cast<double>(distanceCoords.X) * mult;
 			velocity.Y = static_cast<double>(distanceCoords.Y) * mult;
-			velocity.Z = static_cast<double>(distanceCoords.Z) * mult + (gravity * horizontalDistance) / (2 * speed);
+			velocity.Z = static_cast<double>(distanceCoords.Z) * mult + (gravity * horizontalDist) / (2 * speed);
 		}
 	}
 	else if (randomVelocity)
 	{
+		// (EDITED) 32-facing LUT instead of sin/cos
 		DirStruct dir;
-		dir.SetValue<5>(ScenarioClass::Instance->Random.RandomRanged(0, 31));
+		const int idx = ScenarioClass::Instance->Random.RandomRanged(0, 31);
+		dir.SetValue<5>(idx);
 
-		const auto cos_factor = -2.44921270764e-16; // cos(1.5 * Math::Pi * 1.00001)
-		const auto flatSpeed = cos_factor * pBullet->Speed;
+		// Exact 2π/32 samples
+		static constexpr double kSin32[32] = {
+			0.0000000000000000,  0.1950903220161283,  0.3826834323650898,  0.5555702330196022,
+			0.7071067811865475,  0.8314696123025452,  0.9238795325112867,  0.9807852804032304,
+			1.0000000000000000,  0.9807852804032304,  0.9238795325112867,  0.8314696123025455,
+			0.7071067811865476,  0.5555702330196022,  0.3826834323650899,  0.1950903220161286,
+			0.0000000000000001, -0.1950903220161282, -0.3826834323650897, -0.5555702330196019,
+		   -0.7071067811865475, -0.8314696123025452, -0.9238795325112865, -0.9807852804032303,
+		   -1.0000000000000000, -0.9807852804032304, -0.9238795325112868, -0.8314696123025455,
+		   -0.7071067811865477, -0.5555702330196022, -0.3826834323650904, -0.1950903220161287
+		};
+		static constexpr double kCos32[32] = {
+			1.0000000000000000,  0.9807852804032304,  0.9238795325112867,  0.8314696123025452,
+			0.7071067811865476,  0.5555702330196023,  0.38268343236508984, 0.1950903220161286,
+			0.0000000000000001, -0.1950903220161282, -0.3826834323650897, -0.5555702330196018,
+		   -0.7071067811865475, -0.8314696123025453, -0.9238795325112867, -0.9807852804032303,
+		   -1.0000000000000000, -0.9807852804032304, -0.9238795325112868, -0.8314696123025455,
+		   -0.7071067811865477, -0.5555702330196022, -0.38268343236509034,-0.19509032201612866,
+		   -0.0000000000000002,  0.1950903220161283,  0.3826834323650895,  0.5555702330196018,
+			0.7071067811865474,  0.8314696123025452,  0.9238795325112865,  0.9807852804032303
+		};
 
-		const auto radians = dir.GetRadian<32>();
-		velocity = BulletVelocity { Math::cos(radians) * flatSpeed, Math::sin(radians) * flatSpeed, static_cast<double>(-pBullet->Speed) };
+		const double cos_factor = -2.44921270764e-16; // same as original
+		const double flatSpeed = cos_factor * pBullet->Speed;
+
+		// Build velocity directly from LUT; same facing index and signs as before
+		velocity = BulletVelocity {
+			kCos32[idx] * flatSpeed,
+			kSin32[idx] * flatSpeed,
+			static_cast<double>(-pBullet->Speed)
+		};
 	}
 
-	// Unlimbo
+	// Unlimbo (unchanged)
 	pBullet->MoveTo(sourceCoords, velocity);
 }
 

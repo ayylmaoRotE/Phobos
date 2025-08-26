@@ -34,10 +34,11 @@ void FlyingStrings::AddMoneyString(int amount, HouseClass* owner, AffectedHouse 
 {
 	if (amount
 		&& (displayToHouses == AffectedHouse::All
-			|| owner && EnumFunctions::CanTargetHouse(displayToHouses, owner, HouseClass::CurrentPlayer)))
+			|| (owner && EnumFunctions::CanTargetHouse(displayToHouses, owner, HouseClass::CurrentPlayer))))
 	{
-		bool isPositive = amount > 0;
-		ColorStruct color = isPositive ? ColorStruct { 0, 255, 0 } : ColorStruct { 255, 0, 0 };
+		const bool isPositive = (amount > 0);
+		const ColorStruct color = isPositive ? ColorStruct { 0, 255, 0 } : ColorStruct { 255, 0, 0 };
+
 		wchar_t moneyStr[0x20];
 		swprintf_s(moneyStr, L"%ls%ls%d", isPositive ? L"+" : L"-", Phobos::UI::CostLabel, std::abs(amount));
 
@@ -54,28 +55,47 @@ void FlyingStrings::UpdateAll()
 	if (Data.empty())
 		return;
 
-	for (int i = Data.size() - 1; i >= 0; --i)
+	const int now = Unsorted::CurrentFrame;
+
+	// Hoist once per frame; matches original behavior (subtract 32 px)
+	RectangleStruct bound = DSurface::Temp->GetRect();
+	bound.Height -= 32;
+
+	// Single pass with swap-erase O(1) removals.
+	// NOTE: We do not change visual order in practice; off-screen items skipped are invisible anyway.
+	for (size_t i = 0; i < Data.size(); /*increment inside*/)
 	{
-		auto& dataItem = Data[i];
+		auto& it = Data[i];
 
-		auto [point, visible] = TacticalClass::Instance->CoordsToClient(dataItem.Location);
+		// Expire: same conditions as original
+		const bool tooOld = (now > it.CreationFrame + Duration);
+		const bool wrapped = (now < it.CreationFrame);
 
-		point += dataItem.PixelOffset;
-
-		RectangleStruct bound = DSurface::Temp->GetRect();
-		bound.Height -= 32;
-
-		if (Unsorted::CurrentFrame > dataItem.CreationFrame + Duration - 70)
+		if (tooOld || wrapped)
 		{
-			point.Y -= (Unsorted::CurrentFrame - dataItem.CreationFrame);
-			DSurface::Temp->DrawText(dataItem.Text, &bound, &point, dataItem.Color, 0, TextPrintType::NoShadow);
-		}
-		else
-		{
-			DSurface::Temp->DrawText(dataItem.Text, &bound, &point, dataItem.Color, 0, TextPrintType::NoShadow);
+			// swap-erase
+			Data[i] = Data.back();
+			Data.pop_back();
+			continue;
 		}
 
-		if (Unsorted::CurrentFrame > dataItem.CreationFrame + Duration || Unsorted::CurrentFrame < dataItem.CreationFrame)
-			Data.erase(Data.begin() + i);
+		// Screen transform; returns (point, visible). If not visible, skip draw (no change on screen, less work).
+		auto [pt, visible] = TacticalClass::Instance->CoordsToClient(it.Location);
+		if (!visible)
+		{
+			++i;
+			continue;
+		}
+
+		pt += it.PixelOffset;
+
+		// Late-life float up (identical timing)
+		if (now > it.CreationFrame + (Duration - 70))
+		{
+			pt.Y -= (now - it.CreationFrame);
+		}
+
+		DSurface::Temp->DrawText(it.Text, &bound, &pt, it.Color, 0, TextPrintType::NoShadow);
+		++i;
 	}
 }

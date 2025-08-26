@@ -610,7 +610,6 @@ bool ShieldClass::ConvertCheck()
 {
 	const auto newID = this->Techno->GetTechnoType();
 
-	// If there has been no actual TechnoType conversion then we bail out early.
 	if (this->TechnoID == newID)
 		return false;
 
@@ -619,26 +618,24 @@ bool ShieldClass::ConvertCheck()
 	const auto pOldType = this->Type;
 	const bool allowTransfer = pOldType->AllowTransfer.Get(Attached);
 
+	// Update shield type.
 	if (!allowTransfer && (!pTechnoTypeExt->ShieldType || pTechnoTypeExt->ShieldType->Strength <= 0))
 	{
-		// Case 1: Old shield is not allowed to transfer or there's no eligible new shield type -> delete shield.
 		this->KillAnim();
 		pTechnoExt->CurrentShieldType = nullptr;
 		pTechnoExt->Shield = nullptr;
 		this->UpdateTint();
+
 		return true;
 	}
-	else if (!allowTransfer && pTechnoTypeExt->ShieldType && pTechnoTypeExt->ShieldType->Strength > 0)
+	else if (pTechnoTypeExt->ShieldType && pTechnoTypeExt->ShieldType->Strength > 0)
 	{
-		// Case 2: Old shield is not allowed to transfer and the new type is eligible for activation -> use the new shield type.
 		pTechnoExt->CurrentShieldType = pTechnoTypeExt->ShieldType;
-		this->Type = pTechnoTypeExt->ShieldType;
 	}
 
-	// Our new type is either the old shield or the changed type from the above two scenarios.
 	const auto pNewType = pTechnoExt->CurrentShieldType;
 
-	// Update shield properties if we still have a shield.
+	// Update shield properties.
 	if (pNewType && pNewType->Strength > 0 && this->Available)
 	{
 		const bool isDamaged = this->Techno->GetHealthPercentage() <= RulesClass::Instance->ConditionYellow;
@@ -670,7 +667,7 @@ bool ShieldClass::ConvertCheck()
 	}
 
 	this->TechnoID = newID;
-	this->UpdateTint(true); // Force tint update on shield type conversion.
+	this->UpdateTint();
 
 	return false;
 }
@@ -882,9 +879,9 @@ void ShieldClass::UpdateIdleAnim()
 	}
 }
 
-void ShieldClass::UpdateTint(bool forceUpdate)
+void ShieldClass::UpdateTint()
 {
-	if (this->Type->HasTint() || forceUpdate)
+	if (this->Type->HasTint())
 	{
 		auto const pTechno = this->Techno;
 		TechnoExt::ExtMap.Find(pTechno)->UpdateTintValues();

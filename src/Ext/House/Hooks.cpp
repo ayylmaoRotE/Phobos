@@ -390,14 +390,14 @@ static inline bool CheckShouldDisableDefensesCameo(HouseClass* pHouse, TechnoTyp
 			}
 
 			auto buildLimitRemaining = [](HouseClass* pHouse, BuildingTypeClass* pBldType)
-			{
-				const auto BuildLimit = pBldType->BuildLimit;
+				{
+					const auto BuildLimit = pBldType->BuildLimit;
 
-				if (BuildLimit >= 0)
-					return BuildLimit - BuildingTypeExt::CountOwnedNowWithDeployOrUpgrade(pBldType, pHouse);
-				else
-					return -BuildLimit - pHouse->CountOwnedEver(pBldType);
-			};
+					if (BuildLimit >= 0)
+						return BuildLimit - BuildingTypeExt::CountOwnedNowWithDeployOrUpgrade(pBldType, pHouse);
+					else
+						return -BuildLimit - pHouse->CountOwnedEver(pBldType);
+				};
 
 			if (buildLimitRemaining(pHouse, pBuildingType) - count <= 0)
 				return true;

@@ -24,9 +24,17 @@ private:
 	inline int GetBuildTime(TechnoTypeClass* pType) const;
 	inline int GetPower(TechnoTypeClass* pType) const;
 
+	// buffer helpers
+	static constexpr std::size_t BufferCap = 512;
+	inline void ClearBuffer();
+	inline void Append(const wchar_t* s);
+	inline void AppendInt(int v);
+	inline void AppendFixed2(int mm, int ss);
+	inline const wchar_t* Buf() const { return this->TextBuffer; }
+
 public:
 	inline bool IsEnabled() const;
-	inline const wchar_t* GetBuffer() const;
+	inline const wchar_t* GetBuffer() const { return this->Buf(); }
 
 	void HelpText(BuildType& cameo);
 	void HelpText_Techno(TechnoTypeClass* pType);
@@ -34,7 +42,8 @@ public:
 
 	// Properties
 private:
-	std::wstring TextBuffer {};
+	wchar_t TextBuffer[BufferCap]; // C buffer
+	std::size_t Len;
 
 public:
 	bool IsCameo { false };

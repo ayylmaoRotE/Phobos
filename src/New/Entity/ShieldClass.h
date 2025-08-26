@@ -63,7 +63,7 @@ public:
 	ArmorType GetArmorType(TechnoTypeClass* pTechnoType = nullptr) const;
 	int GetFramesSinceLastBroken() const;
 	void SetAnimationVisibility(bool visible);
-	void UpdateTint(bool forceUpdate = false);
+	void UpdateTint();
 
 	static void SyncShieldToAnother(TechnoClass* pFrom, TechnoClass* pTo);
 	static bool ShieldIsBrokenTEvent(ObjectClass* pAttached);

@@ -18,6 +18,80 @@
 #include <New/Type/BannerTypeClass.h>
 
 #include <Utilities/Debug.h>
+#include <Ext/Anim/Body.h>
+#include <Unsorted.h>
+#include <Misc/AnimationBudget.h>
+
+namespace
+{ // [ADDED - perf glue]
+	static std::size_t AP_Size()
+	{
+		return AnimExt::AnimsWithAttachedParticles.size();
+	}
+	static bool AP_ShouldErase(std::size_t i)
+	{
+		auto& v = AnimExt::AnimsWithAttachedParticles;
+		AnimClass* a = v[i];
+		auto* x = AnimExt::ExtMap.TryFind(a);
+		return (!a) || a->InLimbo || (!x) || (!x->AttachedSystem);
+	}
+	static void AP_EraseAt(std::size_t i)
+	{
+		auto& v = AnimExt::AnimsWithAttachedParticles;
+		v[i] = v.back(); v.pop_back(); // swap-erase
+	}
+	static AnimParticleBudget::Service sPruner {}; // instance
+	static const AnimParticleBudget::AnimListAPI sApi { &AP_Size, &AP_ShouldErase, &AP_EraseAt };
+} // namespace
+
+namespace AnimParticlePrune
+{
+	static size_t   Cursor = 0;
+	static unsigned Tick = 0;
+	static unsigned BoostFrames = 0;
+	static constexpr size_t BudgetNormal = 64;
+	static constexpr size_t BudgetBoost = 512;
+	static constexpr size_t SoftThresh = 800;   // tune
+	static constexpr size_t HardThresh = 1600;  // tune
+
+	static __forceinline void Service()
+	{
+		// normal run ~every 256 frames; boost runs every frame for a short period
+		if (BoostFrames == 0 && ((++Tick & 0xFFu) != 0)) return;
+
+		auto& v = AnimExt::AnimsWithAttachedParticles;
+		const size_t n = v.size();
+
+		// trigger/extend boost if we cross thresholds
+		if (n > HardThresh)      BoostFrames = 180; // ~3s at 60fps
+		else if (n > SoftThresh) BoostFrames = std::max<unsigned>(BoostFrames, 120);
+
+		const size_t budget = (BoostFrames ? BudgetBoost : BudgetNormal);
+		if (BoostFrames) { --BoostFrames; }
+
+		size_t visited = 0;
+		while (visited < budget && !v.empty())
+		{
+			if (Cursor >= v.size()) Cursor = 0;
+
+			AnimClass* a = v[Cursor];
+			AnimExt::ExtData* x = AnimExt::ExtMap.TryFind(a);
+			const bool stale = (a == nullptr) || a->InLimbo || (x == nullptr) || (x->AttachedSystem == nullptr);
+
+			if (stale)
+			{
+				AnimClass* moved = v.back();
+				v[Cursor] = moved;
+				v.pop_back(); // swap-erase stale
+			}
+			else
+			{
+				++Cursor;
+				++visited;
+			}
+		}
+	}
+}
 
 DEFINE_HOOK(0x777C41, UI_ApplyAppIcon, 0x9)
 {
@@ -88,14 +162,16 @@ DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
 		return 0;
 
 	RectangleStruct vRect = DSurface::Sidebar->GetRect();
-	auto pHouseExt = HouseExt::ExtMap.Find(pPlayer);
+	auto* const pHouseExt = HouseExt::ExtMap.Find(pPlayer);
 
-	// Dynamic horizontal positioning for CommanderPoints and BattlePoints
-	auto pSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
+	// Fix 2: do this once and reuse everywhere below
+	auto* const pSide = SideClass::Array.GetItem(pPlayer->SideIndex);
+	auto* const pSideExt = SideExt::ExtMap.Find(pSide);
+
 	int baseStartX = DSurface::Sidebar->GetWidth() / 2 - 70;
 	int currentX = baseStartX;
 	int yPosition = 2;
-	const int spacing = 0; // Pixels between CP and BP
+	const int spacing = 0;
 
 	// CommanderPoints - always positioned first if enabled
 	if (pHouseExt->AreCommanderPointsEnabled() && Phobos::UI::CommanderPointsSidebar_Show)
@@ -169,7 +245,7 @@ DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
 
 	if (Phobos::UI::HarvesterCounter_Show && Phobos::Config::ShowHarvesterCounter)
 	{
-		const auto pHarvesterSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
+		//const auto pSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
 		wchar_t counter[0x20];
 		const auto nActive = HouseExt::ActiveHarvesterCount(pPlayer);
 		const auto nTotal = HouseExt::TotalHarvesterCount(pPlayer);
@@ -177,13 +253,13 @@ DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
 
 		const ColorStruct clrToolTip = nPercentage > Phobos::UI::HarvesterCounter_ConditionYellow
 			? Drawing::TooltipColor : nPercentage > Phobos::UI::HarvesterCounter_ConditionRed
-			? pHarvesterSideExt->Sidebar_HarvesterCounter_Yellow : pHarvesterSideExt->Sidebar_HarvesterCounter_Red;
+			? pSideExt->Sidebar_HarvesterCounter_Yellow : pSideExt->Sidebar_HarvesterCounter_Red;
 
 		swprintf_s(counter, L"%ls%d/%d", Phobos::UI::HarvesterLabel, nActive, nTotal);
 
 		Point2D vPos = {
-			DSurface::Sidebar->GetWidth() / 2 + 50 + pHarvesterSideExt->Sidebar_HarvesterCounter_Offset.Get().X,
-			2 + pHarvesterSideExt->Sidebar_HarvesterCounter_Offset.Get().Y
+			DSurface::Sidebar->GetWidth() / 2 + 50 + pSideExt->Sidebar_HarvesterCounter_Offset.Get().X,
+			2 + pSideExt->Sidebar_HarvesterCounter_Offset.Get().Y
 		};
 
 		DSurface::Sidebar->DrawText(counter, &vRect, &vPos, Drawing::RGB_To_Int(clrToolTip), 0,
@@ -192,14 +268,14 @@ DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
 
 	if (Phobos::UI::PowerDelta_Show && Phobos::Config::ShowPowerDelta && pPlayer->Buildings.Count)
 	{
-		const auto pPowerSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
+		//const auto pSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
 		wchar_t counter[0x20];
 
 		ColorStruct clrToolTip;
 
 		if (pPlayer->PowerBlackoutTimer.InProgress())
 		{
-			clrToolTip = pPowerSideExt->Sidebar_PowerDelta_Grey;
+			clrToolTip = pSideExt->Sidebar_PowerDelta_Grey;
 			swprintf_s(counter, L"%ls", Phobos::UI::PowerBlackoutLabel);
 		}
 		else
@@ -211,40 +287,39 @@ DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
 				? Phobos::UI::PowerDelta_ConditionRed * 2.f : Phobos::UI::PowerDelta_ConditionYellow;
 
 			clrToolTip = percent < Phobos::UI::PowerDelta_ConditionYellow
-				? pPowerSideExt->Sidebar_PowerDelta_Green : LESS_EQUAL(percent, Phobos::UI::PowerDelta_ConditionRed)
-				? pPowerSideExt->Sidebar_PowerDelta_Yellow : pPowerSideExt->Sidebar_PowerDelta_Red;
+				? pSideExt->Sidebar_PowerDelta_Green : LESS_EQUAL(percent, Phobos::UI::PowerDelta_ConditionRed)
+				? pSideExt->Sidebar_PowerDelta_Yellow : pSideExt->Sidebar_PowerDelta_Red;
 
 			swprintf_s(counter, L"%ls%+d", Phobos::UI::PowerLabel, delta);
 		}
 
 		Point2D vPos = {
-			DSurface::Sidebar->GetWidth() / 2 - 70 + pPowerSideExt->Sidebar_PowerDelta_Offset.Get().X,
-			2 + pPowerSideExt->Sidebar_PowerDelta_Offset.Get().Y
+			DSurface::Sidebar->GetWidth() / 2 - 70 + pSideExt->Sidebar_PowerDelta_Offset.Get().X,
+			2 + pSideExt->Sidebar_PowerDelta_Offset.Get().Y
 		};
 
 		auto const TextFlags = static_cast<TextPrintType>(static_cast<int>(TextPrintType::UseGradPal | TextPrintType::Metal12)
-				| static_cast<int>(pPowerSideExt->Sidebar_PowerDelta_Align.Get()));
+				| static_cast<int>(pSideExt->Sidebar_PowerDelta_Align.Get()));
 
 		DSurface::Sidebar->DrawText(counter, &vRect, &vPos, Drawing::RGB_To_Int(clrToolTip), 0, TextFlags);
 	}
 
 	if (Phobos::UI::WeedsCounter_Show && Phobos::Config::ShowWeedsCounter)
 	{
-		const auto pWeedsSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
+		//const auto pSideExt = SideExt::ExtMap.Find(SideClass::Array.GetItem(pPlayer->SideIndex));
 		wchar_t counter[0x20];
-		const ColorStruct clrToolTip = pWeedsSideExt->Sidebar_WeedsCounter_Color.Get(Drawing::TooltipColor);
+		const ColorStruct clrToolTip = pSideExt->Sidebar_WeedsCounter_Color.Get(Drawing::TooltipColor);
 
 		swprintf_s(counter, L"%d", static_cast<int>(pPlayer->OwnedWeed.GetTotalAmount()));
 
 		Point2D vPos = {
-			DSurface::Sidebar->GetWidth() / 2 + 50 + pWeedsSideExt->Sidebar_WeedsCounter_Offset.Get().X,
-			2 + pWeedsSideExt->Sidebar_WeedsCounter_Offset.Get().Y
+			DSurface::Sidebar->GetWidth() / 2 + 50 + pSideExt->Sidebar_WeedsCounter_Offset.Get().X,
+			2 + pSideExt->Sidebar_WeedsCounter_Offset.Get().Y
 		};
 
 		DSurface::Sidebar->DrawText(counter, &vRect, &vPos, Drawing::RGB_To_Int(clrToolTip), 0,
 			TextPrintType::UseGradPal | TextPrintType::Center | TextPrintType::Metal12);
 	}
-
 	return 0;
 }
 
@@ -305,6 +380,7 @@ DEFINE_HOOK(0x6A8463, StripClass_OperatorLessThan_CameoPriority, 0x5)
 DEFINE_HOOK(0x6D4684, TacticalClass_Draw_FlyingStrings, 0x6)
 {
 	FlyingStrings::UpdateAll();
+	sPruner.Tick(sApi);
 	return 0;
 }
 
@@ -505,38 +581,4 @@ DEFINE_HOOK(0x69A317, SessionClass_PlayerColorIndexToColorSchemeIndex, 0x0)
 	R->EAX(index);
 
 	return 0x69A325;
-}
-
-DEFINE_HOOK(0x552F79, LoadProgressManager_Draw_MissingLoadingScreenDefaults, 0x6)
-{
-	GET(LoadProgressManager*, pThis, EBP);
-	GET(ConvertClass*, pDrawer, EBX);
-	GET_STACK(bool, isLowRes, STACK_OFFSET(0x1268, -0x1235));
-
-	auto const pScenarioExt = ScenarioExt::Global();
-
-	if (!pThis->LoadScreenSHP)
-		pThis->LoadScreenSHP = FileSystem::LoadSHPFile(isLowRes ? pScenarioExt->DefaultLS640BkgdName : pScenarioExt->DefaultLS800BkgdName);
-
-	if (!pDrawer)
-	{
-		// Uncertain how necessary this is but is what game does...
-		if (LoadProgressManager::LoadScreenPal)
-		{
-			GameDelete(LoadProgressManager::LoadScreenPal);
-			LoadProgressManager::LoadScreenPal = nullptr;
-		}
-
-		if (LoadProgressManager::LoadScreenBytePal)
-		{
-			GameDelete(LoadProgressManager::LoadScreenBytePal);
-			LoadProgressManager::LoadScreenBytePal = nullptr;
-		}
-
-		ConvertClass::CreateFromFile(pScenarioExt->DefaultLS800BkgdPal, LoadProgressManager::LoadScreenBytePal, LoadProgressManager::LoadScreenPal);
-
-		R->EBX(LoadProgressManager::LoadScreenPal);
-	}
-
-	return 0;
 }

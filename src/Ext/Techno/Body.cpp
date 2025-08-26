@@ -12,7 +12,9 @@
 #include <Utilities/AresFunctions.h>
 #include <New/AnonymousType/GiftBoxFunctional.h>
 
-// stable, single-pass erase of the first matching pointer; preserves order
+TechnoExt::ExtContainer TechnoExt::ExtMap;
+UnitClass* TechnoExt::Deployer = nullptr;
+
 template<typename T>
 static __forceinline void stable_erase_first(std::vector<T*>& v, T* value)
 {
@@ -21,9 +23,6 @@ static __forceinline void stable_erase_first(std::vector<T*>& v, T* value)
 		if (v[i] == value) { v.erase(v.begin() + i); return; }
 	}
 }
-
-TechnoExt::ExtContainer TechnoExt::ExtMap;
-UnitClass* TechnoExt::Deployer = nullptr;
 
 TechnoExt::ExtData::~ExtData()
 {
@@ -35,15 +34,15 @@ TechnoExt::ExtData::~ExtData()
 
 	if (pTypeExt->AutoDeath_Behavior.isset())
 	{
-		auto& vec = ScenarioExt::Global()->AutoDeathObjects;
-		vec.erase(std::remove(vec.begin(), vec.end(), this), vec.end());
+		auto& v = ScenarioExt::Global()->AutoDeathObjects;
+		stable_erase_first(v, this);             // instead of erase(remove(...))
 	}
 
 	if (whatAmI != AbstractType::AircraftType && whatAmI != AbstractType::BuildingType
-		&& pType->Ammo > 0 && pTypeExt->ReloadInTransport)
+	&& pType->Ammo > 0 && pTypeExt->ReloadInTransport)
 	{
-		auto& vec = ScenarioExt::Global()->TransportReloaders;
-		vec.erase(std::remove(vec.begin(), vec.end(), this), vec.end());
+		auto& v = ScenarioExt::Global()->TransportReloaders;
+		stable_erase_first(v, this);             // instead of erase(remove(...))
 	}
 
 	if (this->AnimRefCount > 0)
@@ -51,14 +50,15 @@ TechnoExt::ExtData::~ExtData()
 
 	if (pTypeExt->Harvester_Counted)
 	{
-		auto& vec = HouseExt::ExtMap.Find(pThis->Owner)->OwnedCountedHarvesters;
-		vec.erase(std::remove(vec.begin(), vec.end(), pThis), vec.end());
+		if (auto* owner = pThis->Owner)
+		{        // keep the owner null-guard
+			auto& v = HouseExt::ExtMap.Find(owner)->OwnedCountedHarvesters;
+			stable_erase_first(v, pThis);        // instead of erase(remove(...))
+		}
 	}
 
 	for (auto const pBolt : this->ElectricBolts)
-	{
 		pBolt->Owner = nullptr;
-	}
 
 	this->ElectricBolts.clear();
 }
@@ -833,8 +833,10 @@ void TechnoExt::ExtData::Serialize(T& Stm)
 		.Process(this->TintIntensityAllies)
 		.Process(this->TintIntensityEnemies)
 		.Process(this->AttackMoveFollowerTempCount)
+		.Process(this->Harvester_AutoReturn_CombatTimer)
+		.Process(this->Harvester_AutoReturn_IssueCooldown)
+		.Process(this->Harvester_AutoReturn_Flags)
 		.Process(this->MyGiftBox)
-		.Process(this->AircraftOpentoppedInitEd)
 		;
 }
 
@@ -890,7 +892,6 @@ DEFINE_HOOK(0x6F3260, TechnoClass_CTOR, 0x5)
 DEFINE_HOOK(0x6F4500, TechnoClass_DTOR, 0x5)
 {
 	GET(TechnoClass*, pItem, ECX);
-
 	// Handle GiftBox Destroy
 	if (pItem && pItem->GetTechnoType())
 	{
@@ -903,51 +904,6 @@ DEFINE_HOOK(0x6F4500, TechnoClass_DTOR, 0x5)
 	TechnoExt::ExtMap.Remove(pItem);
 
 	return 0;
-}
-
-void TechnoExt::ExtData::UpdateAircraftOpentopped()
-{
-	auto const pThis = this->OwnerObject();
-
-	if (!TechnoExt::IsActive(pThis))
-		return;
-
-	// Only process aircraft
-	if (pThis->WhatAmI() != AbstractType::Aircraft)
-		return;
-
-	const auto pType = pThis->GetTechnoType();
-
-	if (pType->Passengers > 0 && !AircraftOpentoppedInitEd)
-	{
-		bool hasPassengers = false;
-		for (NextObject object(pThis->Passengers.GetFirstPassenger()); object; ++object)
-		{
-			if (auto const pInf = abstract_cast<FootClass*>(*object))
-			{
-				hasPassengers = true;
-				if (!pInf->Transporter || !pInf->InOpenToppedTransport)
-				{
-					if (pType->OpenTopped)
-					{
-						pThis->EnteredOpenTopped(pInf);
-						// Ensure passenger is marked as being in OpenTopped transport
-						pInf->InOpenToppedTransport = true;
-					}
-
-					if (pType->Gunner)
-						abstract_cast<FootClass*>(pThis)->ReceiveGunner(pInf);
-
-					pInf->Transporter = pThis;
-					pInf->Undiscover();
-				}
-			}
-		}
-
-		// Only mark as initialized if we actually have passengers
-		if (hasPassengers)
-			AircraftOpentoppedInitEd = true;
-	}
 }
 
 DEFINE_HOOK_AGAIN(0x70C250, TechnoClass_SaveLoad_Prefix, 0x8)

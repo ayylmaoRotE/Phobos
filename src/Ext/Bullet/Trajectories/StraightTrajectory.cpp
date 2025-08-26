@@ -857,8 +857,12 @@ void StraightTrajectory::PrepareForDetonateAt(BulletClass* pBullet, HouseClass* 
 	if (pType->ProximityFlight)
 	{
 		const auto airTracker = &AircraftTrackerClass::Instance;
-		airTracker->FillCurrentVector(MapClass::Instance.GetCellAt(pBullet->Location + velocityCrd * 0.5),
-			Game::F2I(sqrt(radius * radius + (velocitySq / 4)) / Unsorted::LeptonsPerCell));
+
+		// Preserve original tracker radius computation (cells), keep sqrt here to avoid behavior changes.
+		airTracker->FillCurrentVector(
+			MapClass::Instance.GetCellAt(pBullet->Location + velocityCrd * 0.5),
+			Game::F2I(std::sqrt(radius * radius + (velocitySq / 4)) / Unsorted::LeptonsPerCell)
+		);
 
 		for (auto pTechno = airTracker->Get(); pTechno; pTechno = airTracker->Get())
 		{
@@ -869,23 +873,24 @@ void StraightTrajectory::PrepareForDetonateAt(BulletClass* pBullet, HouseClass* 
 			if (!pType->ProximityAllies && pOwner && pOwner->IsAlliedWith(pTechno->Owner) && pTechno != pTarget)
 				continue;
 
-			// Check distance
+			// Geometry identical to ground pass, all math in squared space
 			const auto targetCrd = pTechno->GetCoords();
 			const auto pathCrd = targetCrd - pBullet->SourceCoords;
-
-			if (pathCrd * velocityCrd < 0) // In front of the techno
+			if (pathCrd * velocityCrd < 0) // in front?
 				continue;
 
 			const auto distanceCrd = targetCrd - pBullet->Location;
 			const auto nextDistanceCrd = distanceCrd - velocityCrd;
-
-			if (nextDistanceCrd * velocityCrd > 0) // Behind the bullet
+			if (nextDistanceCrd * velocityCrd > 0) // behind?
 				continue;
 
-			const auto cross = distanceCrd.CrossProduct(nextDistanceCrd).MagnitudeSquared();
-			const auto distance = (velocitySq > 1e-10) ? sqrt(cross / velocitySq) : distanceCrd.Magnitude();
+			const auto crossSq = distanceCrd.CrossProduct(nextDistanceCrd).MagnitudeSquared();
+			const double distSq = (velocitySq > 1e-10)
+				? (crossSq / static_cast<double>(velocitySq))
+				: static_cast<double>(distanceCrd.MagnitudeSquared());
 
-			if (distance > radius) // In the cylinder
+			const double radiusSq = static_cast<double>(radius) * static_cast<double>(radius);
+			if (distSq > radiusSq) // outside cylinder
 				continue;
 
 			if (thisSize >= vectSize)

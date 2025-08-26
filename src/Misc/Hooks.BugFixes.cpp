@@ -161,7 +161,7 @@ DEFINE_HOOK(0x702299, TechnoClass_ReceiveDamage_Debris, 0xA)
 				int amountToSpawn = Math::min(totalSpawnAmount, ScenarioClass::Instance->Random.RandomRanged(currentMinDebris, currentMaxDebris));
 				totalSpawnAmount -= amountToSpawn;
 
-				for ( ; amountToSpawn > 0; --amountToSpawn)
+				for (; amountToSpawn > 0; --amountToSpawn)
 					GameCreate<VoxelAnimClass>(debrisTypes[currentIndex], &coord, pOwner);
 
 				if (totalSpawnAmount <= 0)
@@ -845,7 +845,7 @@ DEFINE_HOOK(0x6D9781, Tactical_RenderLayers_DrawInfoTipAndSpiedSelection, 0x5)
 bool __fastcall BuildingClass_SetOwningHouse_Wrapper(BuildingClass* pThis, void*, HouseClass* pHouse, bool announce)
 {
 	// Fix : Suppress capture EVA event if ConsideredVehicle=yes
-	if(announce) announce = !pThis->IsStrange();
+	if (announce) announce = !pThis->IsStrange();
 
 	const bool res = reinterpret_cast<bool(__thiscall*)(BuildingClass*, HouseClass*, bool)>(0x448260)(pThis, pHouse, announce);
 
@@ -1004,7 +1004,7 @@ DEFINE_HOOK(0x72958E, TunnelLocomotionClass_ProcessDigging_SlowdownDistance, 0x8
 	auto const pLinkedTo = pLoco->LinkedTo;
 	auto& currLoc = pLinkedTo->Location;
 	const auto coords = pLoco->Coords;
-	const int distance = (int) CoordStruct{currLoc.X - coords.X, currLoc.Y - coords.Y,0}.Magnitude() ;
+	const int distance = (int)CoordStruct { currLoc.X - coords.X, currLoc.Y - coords.Y,0 }.Magnitude();
 
 	// Nov 27, 2024 - Starkku: The movement speed was actually also hardcoded here to 19, so the distance check made sense
 	// It can now be customized globally or per TechnoType however
@@ -1367,7 +1367,7 @@ DEFINE_HOOK(0x6F4BB3, TechnoClass_ReceiveCommand_RequestUntether, 0x7)
 
 #pragma region JumpjetShadowPointFix
 
-Point2D *__stdcall JumpjetLoco_ILoco_Shadow_Point(ILocomotion * iloco, Point2D *pPoint)
+Point2D* __stdcall JumpjetLoco_ILoco_Shadow_Point(ILocomotion* iloco, Point2D* pPoint)
 {
 	__assume(iloco != nullptr);
 	const auto pLoco = static_cast<JumpjetLocomotionClass*>(iloco);
@@ -1457,7 +1457,7 @@ DEFINE_HOOK_AGAIN(0x69F05D, EndPiggyback_PowerOn, 0x7) // Ship
 DEFINE_HOOK(0x719F17, EndPiggyback_PowerOn, 0x5) // Teleport
 {
 	auto* iloco = R->Origin() == 0x719F17 ? R->ECX<ILocomotion*>() : R->EAX<ILocomotion*>();
-	__assume(iloco!=nullptr);
+	__assume(iloco != nullptr);
 	const auto pLinkedTo = static_cast<LocomotionClass*>(iloco)->LinkedTo;
 	if (!pLinkedTo->Deactivated && !pLinkedTo->IsUnderEMP())
 		iloco->Power_On();
@@ -2099,8 +2099,8 @@ DEFINE_HOOK(0x481778, CellClass_ScatterContent_Scatter, 0x6)
 
 	if (ignoreDestination || pTechno->HasAbility(Ability::Scatter)
 		|| (pTechno->Owner->IsControlledByHuman()
-		? RulesClass::Instance->PlayerScatter
-		: pTechno->Owner->IQLevel2 >= RulesClass::Instance->Scatter))
+			? RulesClass::Instance->PlayerScatter
+			: pTechno->Owner->IQLevel2 >= RulesClass::Instance->Scatter))
 	{
 		pTechno->Scatter(coords, ignoreMission, ignoreDestination);
 	}
@@ -2129,8 +2129,11 @@ DEFINE_HOOK(0x4D6FE1, FootClass_ElectricAssultFix2, 0x7)		// Mission_AreaGuard
 {
 	GET(FootClass*, pThis, ESI);
 	GET(BuildingClass*, pBuilding, EDI);
-	enum { SkipGuard = 0x4D51AE, ContinueGuard = 0x4D5198,
-		SkipAreaGuard = 0x4D7001, ContinueAreaGuard = 0x4D6FF5 };
+	enum
+	{
+		SkipGuard = 0x4D51AE, ContinueGuard = 0x4D5198,
+		SkipAreaGuard = 0x4D7001, ContinueAreaGuard = 0x4D6FF5
+	};
 
 	const auto pWeapon = ElectricAssultTemp::WeaponType;
 	const bool InGuard = (R->Origin() == 0x4D5184);
@@ -2331,21 +2334,12 @@ DEFINE_HOOK(0x415F25, AircraftClass_FireAt_Vertical, 0x6)
 	GET(BulletClass*, pBullet, ESI);
 
 	if (pBullet->HasParachute || (pBullet->Type->Vertical && BulletTypeExt::ExtMap.Find(pBullet->Type)->Vertical_AircraftFix))
+	{
+		pBullet->Velocity = BulletVelocity { 0, 0, pBullet->Velocity.Z };
 		return SkipGameCode;
+	}
 
 	return 0;
-}
-
-DEFINE_HOOK(0x6FED2F, TechnoClass_FireAt_VerticalInitialFacing, 0x6)
-{
-	enum { Continue = 0x6FED39, SkipGameCode = 0x6FED8F };
-
-	GET(BulletTypeClass*, pBulletType, EAX);
-
-	if (BulletTypeExt::ExtMap.Find(pBulletType)->VerticalInitialFacing.Get(pBulletType->Voxel || pBulletType->Vertical))
-		return Continue;
-
-	return SkipGameCode;
 }
 
 #pragma region InfantryDeployFireWeaponFix

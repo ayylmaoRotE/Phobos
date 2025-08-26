@@ -186,6 +186,7 @@ void AnimTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->ConcurrentChance)
 		.Process(this->ConcurrentAnim)
 		.Process(this->ConcurrentChances)
+
 		;
 }
 

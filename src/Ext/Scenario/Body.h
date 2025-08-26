@@ -42,10 +42,6 @@ public:
 
 		std::unique_ptr<MessageListClass> NewMessageList;
 
-		PhobosFixedString<64u> DefaultLS640BkgdName;
-		PhobosFixedString<64u> DefaultLS800BkgdName;
-		PhobosFixedString<64u> DefaultLS800BkgdPal;
-
 		ExtData(ScenarioClass* OwnerObject) : Extension<ScenarioClass>(OwnerObject)
 			, ShowBriefing { false }
 			, BriefingTheme { -1 }
@@ -56,9 +52,6 @@ public:
 			, SWSidebar_Enable { true }
 			, SWSidebar_Indices {}
 			, NewMessageList {}
-			, DefaultLS640BkgdName {}
-			, DefaultLS800BkgdName {}
-			, DefaultLS800BkgdPal {}
 		{ }
 
 		void SetVariableToByID(bool bIsGlobal, int nIndex, char bState);

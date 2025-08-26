@@ -78,10 +78,6 @@ DEFINE_HOOK(0x414F70, AircraftClass_AI_DisableRadioContact, 0x6)
 
 	GET(AircraftClass*, pThis, ESI);
 
-	// Update OpenTopped aircraft passenger initialization
-	if (auto pExt = TechnoExt::ExtMap.Find(pThis))
-		pExt->UpdateAircraftOpentopped();
-
 	const auto pTypeExt = TechnoTypeExt::ExtMap.Find(pThis->Type);
 	if (!pTypeExt)
 		return Continue;

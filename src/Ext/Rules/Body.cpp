@@ -15,6 +15,8 @@
 #include <New/Type/InsigniaTypeClass.h>
 #include <New/Type/SelectBoxTypeClass.h>
 #include <Utilities/Patch.h>
+#include <Misc/BeaconTTL.h>
+
 
 std::unique_ptr<RulesExt::ExtData> RulesExt::Data = nullptr;
 
@@ -79,7 +81,6 @@ void RulesExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 void RulesExt::ExtData::LoadBeforeTypeData(RulesClass* pThis, CCINIClass* pINI)
 {
 	INI_EX exINI(pINI);
-
 	this->Storage_TiberiumIndex.Read(exINI, GameStrings::General, "Storage.TiberiumIndex");
 	this->HarvesterDumpAmount.Read(exINI, GameStrings::General, "HarvesterDumpAmount");
 	this->InfantryGainSelfHealCap.Read(exINI, GameStrings::General, "InfantryGainSelfHealCap");
@@ -321,6 +322,22 @@ void RulesExt::ExtData::LoadBeforeTypeData(RulesClass* pThis, CCINIClass* pINI)
 	this->CommanderPoints.Read(exINI, GameStrings::General, "CommanderPoints");
 	// this->TeamRetaliate.Read(exINI, GameStrings::General, "TeamRetaliate"); // Temporarily disabled
 
+
+	this->AILowHPSell_Enable.Read(exINI, GameStrings::General, "AILowHPSell.Enable");
+	this->AILowHPSell_ThresholdPercent.Read(exINI, GameStrings::General, "AILowHPSell.ThresholdPercent");
+	this->AILowHPSell_Chance.Read(exINI, GameStrings::General, "AILowHPSell.Chance");
+	this->AILowHPSell_OnlyAI.Read(exINI, GameStrings::General, "AILowHPSell.OnlyAI");
+	this->AILowHPSell_RespectUnsellable.Read(exINI, GameStrings::General, "AILowHPSell.RespectUnsellable");
+
+	this->Harvester_AutoReturn_Enable.Read(exINI, GameStrings::General, "Harvester.AutoReturn.Enable");
+	this->Harvester_AutoReturn_CargoPercent.Read(exINI, GameStrings::General, "Harvester.AutoReturn.CargoPercent");
+	this->Harvester_AutoReturn_IdleTicks.Read(exINI, GameStrings::General, "Harvester.AutoReturn.IdleTicks");
+	this->Harvester_AutoReturn_OutOfCombatTicks.Read(exINI, GameStrings::General, "Harvester.AutoReturn.OutOfCombatTicks");
+	this->Harvester_AutoReturn_IssueCooldownTicks.Read(exINI, GameStrings::General, "Harvester.AutoReturn.IssueCooldownTicks");
+	this->Harvester_AutoReturn_SuppressOnStop.Read(exINI, GameStrings::General, "Harvester.AutoReturn.SuppressOnStop");
+
+	this->Harvester_AutoReturn_Types.Read(exINI, GameStrings::General, "AutoReturnHarvesters");
+
 	// Section AITargetTypes
 	int itemsCount = pINI->GetKeyCount("AITargetTypes");
 	for (int i = 0; i < itemsCount; ++i)
@@ -358,6 +375,21 @@ void RulesExt::ExtData::LoadBeforeTypeData(RulesClass* pThis, CCINIClass* pINI)
 
 		this->AIScriptsLists.emplace_back(std::move(objectsList));
 	}
+
+		BeaconTTL_Config cfg {};
+
+		const int ttlTicksFromINI = pINI->ReadInteger("BeaconTTL", "TTLTicks", 0);
+		const int seconds = pINI->ReadInteger("BeaconTTL", "Seconds", 60);
+
+		cfg.TTLTicks = (ttlTicksFromINI > 0) ? ttlTicksFromINI : (seconds * 30); // 30 tps typical
+		cfg.CullStride = pINI->ReadInteger("BeaconTTL", "CullEveryTicks", 30);
+		cfg.Enabled = pINI->ReadBool("BeaconTTL", "Enabled", true);
+		cfg.PlayersOnly = pINI->ReadBool("BeaconTTL", "PlayersOnly", true);
+		cfg.ReplaceOldestOnFourth = pINI->ReadBool("BeaconTTL", "ReplaceOldestOnFourth", true);
+
+		BeaconTTL::OnRulesParsed(cfg);
+
+
 }
 
 // this should load everything that TypeData is not dependant on
@@ -379,6 +411,19 @@ void RulesExt::ExtData::InitializeAfterTypeData(RulesClass* const pThis)
 	
 	// Reload HitAnim data for all warheads now that all INI files are processed
 	WarheadTypeExt::ExtData::ReloadAllHitAnimData(CCINIClass::INI_Rules);
+
+	for (auto const pType : TechnoTypeClass::Array)
+	{
+		if (auto* const pExt = TechnoTypeExt::ExtMap.TryFind(pType))
+		{
+			const bool listed = std::find(
+				this->Harvester_AutoReturn_Types.begin(),
+				this->Harvester_AutoReturn_Types.end(),
+				pType
+			) != this->Harvester_AutoReturn_Types.end();
+			pExt->Harvester_AutoReturn_GlobalEligible = listed;
+		}
+	}
 }
 
 void RulesExt::ExtData::InitializeAfterAllLoaded()
@@ -594,6 +639,21 @@ void RulesExt::ExtData::Serialize(T& Stm)
 		.Process(this->BattlePoints_DefaultFriendlyValue)
 		.Process(this->CommanderPoints)
 		// .Process(this->TeamRetaliate) // Temporarily disabled
+
+
+		.Process(this->AILowHPSell_Enable)
+		.Process(this->AILowHPSell_ThresholdPercent)
+		.Process(this->AILowHPSell_Chance)
+		.Process(this->AILowHPSell_OnlyAI)
+		.Process(this->AILowHPSell_RespectUnsellable)
+		.Process(this->Harvester_AutoReturn_Enable)
+		.Process(this->Harvester_AutoReturn_CargoPercent)
+		.Process(this->Harvester_AutoReturn_IdleTicks)
+		.Process(this->Harvester_AutoReturn_OutOfCombatTicks)
+		.Process(this->Harvester_AutoReturn_IssueCooldownTicks)
+		.Process(this->Harvester_AutoReturn_SuppressOnStop)
+		.Process(this->Harvester_AutoReturn_Types)
+
 		;
 }
 
@@ -743,7 +803,7 @@ DEFINE_HOOK(0x668F6A, RulesData_InitializeAfterAllLoaded, 0x5)
 {
 	Debug::Log("RulesData_InitializeAfterAllLoaded: Hook called, processing TechnoTypes\n");
 	RulesExt::Global()->InitializeAfterAllLoaded();
-	
+
 	// Complete initialization for all TechnoTypes now that everything is loaded
 	int processedCount = 0;
 	for (const auto& pTechnoType : TechnoTypeClass::Array)
@@ -755,7 +815,7 @@ DEFINE_HOOK(0x668F6A, RulesData_InitializeAfterAllLoaded, 0x5)
 			pExt->CompleteInitialization();
 		}
 	}
-	
+
 	Debug::Log("RulesData_InitializeAfterAllLoaded: Processed %d TechnoTypes\n", processedCount);
 	return 0;
 }

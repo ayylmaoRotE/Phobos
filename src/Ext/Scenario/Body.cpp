@@ -1,5 +1,5 @@
 #include "Body.h"
-
+#include <Misc/BeaconTTL.h>
 #include <SessionClass.h>
 #include <VeinholeMonsterClass.h>
 
@@ -163,9 +163,6 @@ void ScenarioExt::ExtData::Serialize(T& Stm)
 		.Process(this->TransportReloaders)
 		.Process(this->SWSidebar_Enable)
 		.Process(this->SWSidebar_Indices)
-		.Process(this->DefaultLS640BkgdName)
-		.Process(this->DefaultLS800BkgdName)
-		.Process(this->DefaultLS800BkgdPal)
 //		.Process(this->NewMessageList); // Should not S/L
 		;
 }
@@ -174,12 +171,19 @@ void ScenarioExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
 {
 	Extension<ScenarioClass>::LoadFromStream(Stm);
 	this->Serialize(Stm);
+	BeaconTTL::Deserialize(Stm);
+
+	// ▼ add this
+
 }
 
 void ScenarioExt::ExtData::SaveToStream(PhobosStreamWriter& Stm)
 {
 	Extension<ScenarioClass>::SaveToStream(Stm);
 	this->Serialize(Stm);
+	BeaconTTL::Serialize(Stm);
+
+
 }
 
 // =============================
@@ -194,6 +198,8 @@ DEFINE_HOOK(0x683549, ScenarioClass_CTOR, 0x9)
 	ScenarioExt::Global()->Waypoints.clear();
 	ScenarioExt::Global()->Variables[0].clear();
 	ScenarioExt::Global()->Variables[1].clear();
+
+	BeaconTTL::Reset();
 
 	return 0;
 }
@@ -264,6 +270,9 @@ DEFINE_HOOK(0x55B4E1, LogicClass_Update_BeforeAll, 0x5)
 
 	ScenarioExt::Global()->UpdateAutoDeathObjectsInLimbo();
 	ScenarioExt::Global()->UpdateTransportReloaders();
+
+	// ▼ add this line
+	BeaconTTL::Tick();
 
 	return 0;
 }

@@ -322,26 +322,29 @@ void SWTypeExt::ExtData::PrintMessage(const CSFText& message, HouseClass* pFirer
 	MessageListClass::Instance.PrintMessage(message, RulesClass::Instance->MessageDelay, color);
 }
 
-CellStruct SWTypeExt::ExtData::GetAuxTechnoTarget(HouseClass* pHouse) const
+CellStruct SWTypeExt::ExtData::GetAuxTechnoTarget(HouseClass* /*pHouse*/) const
 {
-	if (!this->SW_AuxTechnos.empty())
+	if (this->SW_AuxTechnos.empty())
+		return CellStruct::Empty;
+
+	for (auto* pTechno : TechnoClass::Array)
 	{
-		for (auto pTechno : TechnoClass::Array)
-		{
-			if (pTechno->IsAlive && pTechno->Health && !pTechno->InLimbo && !pTechno->Deactivated)
-			{
-				auto nLoc = pTechno->GetCoords();
-				auto nLocCell = CellClass::Coord2Cell(nLoc);
+		// cheap filters first
+		if (!pTechno->IsAlive || !pTechno->Health || pTechno->InLimbo || pTechno->Deactivated)
+			continue;
 
-				if (nLoc == CoordStruct::Empty || nLocCell == CellStruct::Empty)
-					continue;
+		// only consider matching types
+		if (!this->SW_AuxTechnos.Contains(pTechno->GetTechnoType()))
+			continue;
 
-				if (this->SW_AuxTechnos.Contains(pTechno->GetTechnoType()))
-				{
-					return nLocCell;
-				}
-			}
-		}
+		// guard before conversion
+		const auto nLoc = pTechno->GetCoords();
+		if (nLoc == CoordStruct::Empty)
+			continue;
+
+		const auto nLocCell = CellClass::Coord2Cell(nLoc);
+		if (nLocCell != CellStruct::Empty)
+			return nLocCell;
 	}
 
 	return CellStruct::Empty;

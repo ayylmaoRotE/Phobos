@@ -52,12 +52,13 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 			if (!pHouse->IsControlledByCurrentPlayer() && !pHouse->IsAlliedWith(pCurrent) && !pCurrent->Defeated && !pCurrent->SpySatActive)
 			{
 				Sub_4ADEE0(0, 0);
-				CellRangeIterator<CellClass>{}(CellClass::Coord2Cell(coords), this->CreateGap + 0.5, [](CellClass* pCell) {
-						pCell->Flags &= ~CellFlags::Revealed;
-						pCell->AltFlags &= ~AltCellFlags::Clear;
-						pCell->ShroudCounter = 1;
-						pCell->GapsCoveringThisCell = 0;
-						return true;
+				CellRangeIterator<CellClass>{}(CellClass::Coord2Cell(coords), this->CreateGap + 0.5, [](CellClass* pCell)
+ {
+	 pCell->Flags &= ~CellFlags::Revealed;
+	 pCell->AltFlags &= ~AltCellFlags::Clear;
+	 pCell->ShroudCounter = 1;
+	 pCell->GapsCoveringThisCell = 0;
+	 return true;
 				});
 				Sub_4ADCD0(0, 0);
 				pCurrent->Visionary = 0;
@@ -178,12 +179,6 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 			for (auto const pTarget : targets)
 				this->DetonateOnOneUnit(pHouse, pTarget, pOwner, bulletWasIntercepted);
 
-			// Apply area-based conversion for warheads with CellSpread
-			if (this->Convert_Pairs.size() > 0)
-			{
-				this->ApplyRangeBasedConversion(pHouse, coords, cellSpread);
-			}
-
 			if (this->Transact)
 			{
 				std::vector<TechnoClass*> transactTargets(targets.begin(), targets.end());
@@ -192,7 +187,8 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 		}
 		else if (pBullet && pBullet->Target)
 		{
-			if (pBullet->DistanceFrom(pBullet->Target) < Unsorted::LeptonsPerCell / 4) {
+			if (pBullet->DistanceFrom(pBullet->Target) < Unsorted::LeptonsPerCell / 4)
+			{
 				switch (pBullet->Target->WhatAmI())
 				{
 				case BuildingClass::AbsID:
@@ -230,19 +226,22 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 		}
 		else if (auto pIntended = this->IntendedTarget)
 		{
-			if (coords.DistanceFrom(pIntended->GetCoords()) < double(Unsorted::LeptonsPerCell / 4)) {
+			if (coords.DistanceFrom(pIntended->GetCoords()) < double(Unsorted::LeptonsPerCell / 4))
+			{
 				this->DetonateOnOneUnit(pHouse, pIntended, pOwner, bulletWasIntercepted);
 
-				if (this->Transact) {
-					const auto NotEligible = [this, pHouse, pOwner](TechnoClass* const pTech) {
-						if (!CanDealDamage(pTech))
-							return true;
+				if (this->Transact)
+				{
+					const auto NotEligible = [this, pHouse, pOwner](TechnoClass* const pTech)
+						{
+							if (!CanDealDamage(pTech))
+								return true;
 
-						if (!pTech->GetTechnoType()->Trainable && this->Transact_Experience_IgnoreNotTrainable)
-							return true;
+							if (!pTech->GetTechnoType()->Trainable && this->Transact_Experience_IgnoreNotTrainable)
+								return true;
 
-						return !CanTargetHouse(pHouse, pTech);
-					};
+							return !CanTargetHouse(pHouse, pTech);
+						};
 
 					std::vector<TechnoClass*> targets = { pIntended };
 					this->TransactOnAllUnits(targets, pHouse, pOwner);
@@ -271,8 +270,7 @@ void WarheadTypeExt::ExtData::DetonateOnOneUnit(HouseClass* pHouse, TechnoClass*
 	if (this->Crit_CurrentChance > 0.0 && (!this->Crit_SuppressWhenIntercepted || !bulletWasIntercepted))
 		this->ApplyCrit(pHouse, pTarget, pOwner);
 
-	// Only apply individual target conversion for single-target warheads (CellSpread < 0.1)
-	if (this->Convert_Pairs.size() > 0 && std::abs(this->OwnerObject()->CellSpread) < 0.1f)
+	if (this->Convert_Pairs.size() > 0)
 		this->ApplyConvert(pHouse, pTarget);
 
 	if (this->AttachEffects.AttachTypes.size() > 0 || this->AttachEffects.RemoveTypes.size() > 0 || this->AttachEffects.RemoveGroups.size() > 0)
@@ -347,7 +345,7 @@ void WarheadTypeExt::ExtData::ApplyBuildingUndeploy(TechnoClass* pTarget)
 		const auto pItems = Helpers::Alex::getCellSpreadItems(pBuilding->GetCoords(), 20);
 
 		// Divide the surrounding units into 16 directions and record their costs
-		int record[16] = {0};
+		int record[16] = { 0 };
 
 		for (const auto& pItem : pItems)
 		{
@@ -629,41 +627,7 @@ void WarheadTypeExt::ExtData::ApplyConvert(HouseClass* pHouse, TechnoClass* pTar
 	if (!pTargetFoot)
 		return;
 
-	TypeConvertGroup::Convert(pTargetFoot, this->Convert_Pairs, pHouse, this->ConvertAnim.Get());
-}
-
-void WarheadTypeExt::ExtData::ApplyRangeBasedConversion(HouseClass* pHouse, const CoordStruct& coords, float cellSpread)
-{
-	if (this->Convert_Pairs.empty())
-		return;
-
-	// Use similar logic to SuperWeapons but with warhead's CellSpread
-	const float rangeLeptons = cellSpread * Unsorted::LeptonsPerCell;
-	const float rangeSquared = rangeLeptons * rangeLeptons;
-
-	for (const auto pTechno : TechnoClass::Array)
-	{
-		auto pTargetFoot = abstract_cast<FootClass*>(pTechno);
-		if (!pTargetFoot)
-			continue;
-
-		// Skip dead/dying units but allow passengers (InLimbo with Transporter)
-		if (pTargetFoot->Health <= 0 || !pTargetFoot->IsAlive || pTargetFoot->IsCrashing || pTargetFoot->IsSinking)
-			continue;
-
-		// Skip units in limbo that are NOT passengers
-		if (pTargetFoot->InLimbo && !pTargetFoot->Transporter)
-			continue;
-
-		// For passengers, use the transporter's location for distance calculation
-		const CoordStruct unitCoords = pTargetFoot->InLimbo && pTargetFoot->Transporter 
-			? pTargetFoot->Transporter->GetCoords() 
-			: pTargetFoot->GetCoords();
-		const float distanceSquared = (float)(coords - unitCoords).MagnitudeSquared();
-
-		if (distanceSquared <= rangeSquared)
-			TypeConvertGroup::Convert(pTargetFoot, this->Convert_Pairs, pHouse, this->ConvertAnim.Get());
-	}
+	TypeConvertGroup::Convert(pTargetFoot, this->Convert_Pairs, pHouse);
 }
 
 void WarheadTypeExt::ExtData::ApplyLocomotorInfliction(TechnoClass* pTarget)
@@ -772,7 +736,7 @@ void WarheadTypeExt::ExtData::ApplyStealMoney(TechnoClass* pOwner, TechnoClass* 
 		auto pOwnerHouse = pOwner->GetOwningHouse();
 		auto pTargetHouse = pTarget->GetOwningHouse();
 
-		if (pOwnerHouse && pTargetHouse && 
+		if (pOwnerHouse && pTargetHouse &&
 			!pOwnerHouse->IsNeutral() && !pTargetHouse->IsNeutral() &&
 			pOwnerHouse != pTargetHouse)
 		{

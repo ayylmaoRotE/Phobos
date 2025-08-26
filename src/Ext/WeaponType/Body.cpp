@@ -7,35 +7,127 @@ WeaponTypeExt::ExtContainer WeaponTypeExt::ExtMap;
 
 bool WeaponTypeExt::ExtData::HasRequiredAttachedEffects(TechnoClass* pTarget, TechnoClass* pFirer) const
 {
-	const bool hasRequiredTypes = this->AttachEffect_RequiredTypes.size() > 0;
-	const bool hasDisallowedTypes = this->AttachEffect_DisallowedTypes.size() > 0;
-	const bool hasRequiredGroups = this->AttachEffect_RequiredGroups.size() > 0;
-	const bool hasDisallowedGroups = this->AttachEffect_DisallowedGroups.size() > 0;
+	// Quick gates
+	const bool needReqTypes = !this->AttachEffect_RequiredTypes.empty();
+	const bool needDisTypes = !this->AttachEffect_DisallowedTypes.empty();
+	const bool needReqGroups = !this->AttachEffect_RequiredGroups.empty();
+	const bool needDisGroups = !this->AttachEffect_DisallowedGroups.empty();
 
-	if (hasRequiredTypes || hasDisallowedTypes || hasRequiredGroups || hasDisallowedGroups)
+	if (!(needReqTypes || needDisTypes || needReqGroups || needDisGroups))
 	{
-		auto pTechno = pTarget;
+		return true;
+	}
 
-		if (this->AttachEffect_CheckOnFirer)
-			pTechno = pFirer;
+	TechnoClass* pTechno = this->AttachEffect_CheckOnFirer ? pFirer : pTarget;
+	if (!pTechno)
+	{
+		// Original logic: missing techno means "pass"
+		return true;
+	}
 
-		if (!pTechno)
-			return true;
+	auto* const pTechnoExt = TechnoExt::ExtMap.Find(pTechno);
+	auto* const pWH = this->OwnerObject()->Warhead;
 
-		auto const pTechnoExt = TechnoExt::ExtMap.Find(pTechno);
-		auto const pWH = this->OwnerObject()->Warhead;
+	// ---- Deterministic memoization for group -> type resolution ----
+	// Key builder that is independent of addresses & sorting:
+	// lowercased names joined by '|'
+	auto buildKey = [](const std::vector<std::string>& groups) -> std::string
+		{
+			std::string key;
+			key.reserve(groups.size() * 12);
+			for (auto& g : groups)
+			{
+				for (char c : g) key.push_back((char)std::tolower((unsigned char)c));
+				key.push_back('|');
+			}
+			return key;
+		};
+	struct Cache
+	{
+		std::unordered_map<std::string, std::vector<AttachEffectTypeClass*>> map;
+	} static cacheReq, cacheDis;
 
-		if (hasDisallowedTypes && pTechnoExt->HasAttachedEffects(this->AttachEffect_DisallowedTypes, false, this->AttachEffect_IgnoreFromSameSource, pFirer, pWH, &this->AttachEffect_DisallowedMinCounts, &this->AttachEffect_DisallowedMaxCounts))
+	auto const& reqGroups = this->AttachEffect_RequiredGroups;
+	auto const& disGroups = this->AttachEffect_DisallowedGroups;
+
+	const std::vector<AttachEffectTypeClass*>* reqGroupTypes = nullptr;
+	const std::vector<AttachEffectTypeClass*>* disGroupTypes = nullptr;
+
+	if (needReqGroups)
+	{
+		const std::string key = buildKey(reqGroups);
+		auto it = cacheReq.map.find(key);
+		if (it == cacheReq.map.end())
+		{
+			it = cacheReq.map.emplace(key, AttachEffectTypeClass::GetTypesFromGroups(reqGroups)).first;
+		}
+		reqGroupTypes = &it->second;
+	}
+	if (needDisGroups)
+	{
+		const std::string key = buildKey(disGroups);
+		auto it = cacheDis.map.find(key);
+		if (it == cacheDis.map.end())
+		{
+			it = cacheDis.map.emplace(key, AttachEffectTypeClass::GetTypesFromGroups(disGroups)).first;
+		}
+		disGroupTypes = &it->second;
+	}
+
+	// ---- Disallowed checks (fail-fast) ----
+	if (needDisTypes)
+	{
+		if (pTechnoExt->HasAttachedEffects(
+			this->AttachEffect_DisallowedTypes,
+			false,
+			this->AttachEffect_IgnoreFromSameSource,
+			pFirer, pWH,
+			&this->AttachEffect_DisallowedMinCounts,
+			&this->AttachEffect_DisallowedMaxCounts))
+		{
 			return false;
-
-		if (hasDisallowedGroups && pTechnoExt->HasAttachedEffects(AttachEffectTypeClass::GetTypesFromGroups(this->AttachEffect_DisallowedGroups), false, this->AttachEffect_IgnoreFromSameSource, pFirer, pWH, &this->AttachEffect_DisallowedMinCounts, &this->AttachEffect_DisallowedMaxCounts))
+		}
+	}
+	if (disGroupTypes && !disGroupTypes->empty())
+	{
+		if (pTechnoExt->HasAttachedEffects(
+			*disGroupTypes,
+			false,
+			this->AttachEffect_IgnoreFromSameSource,
+			pFirer, pWH,
+			&this->AttachEffect_DisallowedMinCounts,
+			&this->AttachEffect_DisallowedMaxCounts))
+		{
 			return false;
+		}
+	}
 
-		if (hasRequiredTypes && !pTechnoExt->HasAttachedEffects(this->AttachEffect_RequiredTypes, true, this->AttachEffect_IgnoreFromSameSource, pFirer, pWH, &this->AttachEffect_RequiredMinCounts, &this->AttachEffect_RequiredMaxCounts))
+	// ---- Required checks ----
+	if (needReqTypes)
+	{
+		if (!pTechnoExt->HasAttachedEffects(
+			this->AttachEffect_RequiredTypes,
+			true,
+			this->AttachEffect_IgnoreFromSameSource,
+			pFirer, pWH,
+			&this->AttachEffect_RequiredMinCounts,
+			&this->AttachEffect_RequiredMaxCounts))
+		{
 			return false;
-
-		if (hasRequiredGroups && !pTechnoExt->HasAttachedEffects(AttachEffectTypeClass::GetTypesFromGroups(this->AttachEffect_RequiredGroups), true, this->AttachEffect_IgnoreFromSameSource, pFirer, pWH, &this->AttachEffect_RequiredMinCounts, &this->AttachEffect_RequiredMaxCounts))
+		}
+	}
+	if (reqGroupTypes && !reqGroupTypes->empty())
+	{
+		if (!pTechnoExt->HasAttachedEffects(
+			*reqGroupTypes,
+			true,
+			this->AttachEffect_IgnoreFromSameSource,
+			pFirer, pWH,
+			&this->AttachEffect_RequiredMinCounts,
+			&this->AttachEffect_RequiredMaxCounts))
+		{
 			return false;
+		}
 	}
 
 	return true;

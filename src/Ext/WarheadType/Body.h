@@ -159,7 +159,6 @@ public:
 		ValueableVector<TechnoTypeClass*> DetonateOnAllMapObjects_IgnoreTypes;
 
 		std::vector<TypeConvertGroup> Convert_Pairs;
-		Nullable<AnimTypeClass*> ConvertAnim;
 		AEAttachInfoTypeClass AttachEffects;
 
 		Valueable<bool> InflictLocomotor;
@@ -208,9 +207,7 @@ public:
 		Valueable<double> AffectsBelowPercent;
 		Valueable<double> AffectsAbovePercent;
 		Valueable<bool> AffectsNeutral;
-
 		Valueable<bool> ReverseEngineer;
-
 		Valueable<bool> CanKill;
 
 		// Ares tags
@@ -232,10 +229,11 @@ public:
 		bool HealthCheck;
 		TechnoClass* DamageAreaTarget;
 
-		std::map<std::string, AnimTypeClass*> ArmorHitAnim;
 		// Stable storage for dynamic HitAnim serialization using parallel vectors
 		std::vector<std::string> ArmorNames;
 		std::vector<std::string> AnimIDs;
+
+		std::map<std::string, AnimTypeClass*> ArmorHitAnim;
 		static std::map<std::string, std::string> ArmorTypeInheritance; // maps custom armor -> base armor
 
 	private:
@@ -375,7 +373,6 @@ public:
 			, DetonateOnAllMapObjects_IgnoreTypes {}
 
 			, Convert_Pairs {}
-			, ConvertAnim {}
 			, AttachEffects {}
 
 			, InflictLocomotor { false }
@@ -448,7 +445,6 @@ public:
 		{ }
 
 		void ApplyConvert(HouseClass* pHouse, TechnoClass* pTarget);
-		void ApplyRangeBasedConversion(HouseClass* pHouse, const CoordStruct& coords, float cellSpread);
 		void ApplyLocomotorInfliction(TechnoClass* pTarget);
 		void ApplyLocomotorInflictionReset(TechnoClass* pTarget);
 	public:
@@ -462,7 +458,7 @@ public:
 		AnimTypeClass* GetArmorHitAnimWithFallback(const char* armorName) const;
 		void StoreArmorHitAnimIDs();
 		void ReconstructArmorHitAnimFromIDs();
-		
+
 		static void LoadArmorTypeInheritance(CCINIClass* pINI);
 	static void ReloadAllHitAnimData(CCINIClass* pINI);
 

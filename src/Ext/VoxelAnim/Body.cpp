@@ -7,17 +7,39 @@ VoxelAnimExt::ExtContainer VoxelAnimExt::ExtMap;
 
 void VoxelAnimExt::InitializeLaserTrails(VoxelAnimClass* pThis)
 {
-	const auto pThisExt = VoxelAnimExt::ExtMap.Find(pThis);
-
-	if (pThisExt->LaserTrails.size())
+	auto* const pThisExt = VoxelAnimExt::ExtMap.Find(pThis);
+	if (!pThisExt || !pThis || !pThis->Type)
 		return;
 
-	const auto pTypeExt = VoxelAnimTypeExt::ExtMap.Find(pThis->Type);
-	const auto pOwner = pThis->OwnerHouse;
-	pThisExt->LaserTrails.reserve(pTypeExt->LaserTrail_Types.size());
+	if (!pThisExt->LaserTrails.empty())
+		return;
 
-	for (auto const& idxTrail : pTypeExt->LaserTrail_Types)
-		pThisExt->LaserTrails.emplace_back(std::make_unique<LaserTrailClass>(LaserTrailTypeClass::Array[idxTrail].get(), pOwner));
+	auto* const pTypeExt = VoxelAnimTypeExt::ExtMap.Find(pThis->Type);
+	const auto& typeIdxs = pTypeExt->LaserTrail_Types;
+	if (typeIdxs.empty())
+		return;
+
+	pThisExt->LaserTrails.reserve(typeIdxs.size());
+
+	// assume Array is a std::vector<unique_ptr<...>> as used elsewhere
+	const auto total = static_cast<int>(LaserTrailTypeClass::Array.size());
+
+	for (const int idxTrail : typeIdxs)
+	{
+		if (idxTrail < 0 || idxTrail >= total)
+		{
+			Debug::Log("VoxelAnimExt: invalid LaserTrail type index %d on %s\n",
+					   idxTrail, pThis->Type->ID);
+			continue;
+		}
+
+		auto* const ltType = LaserTrailTypeClass::Array[idxTrail].get();
+		if (!ltType)
+			continue;
+
+		pThisExt->LaserTrails.emplace_back(
+			std::make_unique<LaserTrailClass>(ltType, pThis->OwnerHouse));
+	}
 }
 
 void VoxelAnimExt::ExtData::Initialize() { }

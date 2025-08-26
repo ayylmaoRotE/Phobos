@@ -587,10 +587,6 @@ DEFINE_HOOK(0x4D7221, FootClass_Unlimbo_LaserTrails, 0x6)
 		pTrail->Visible = true;
 	}
 
-	// Initialize OpenTopped aircraft passengers when first unlimboed
-	if (pTechno->WhatAmI() == AbstractType::Aircraft)
-		pTechnoExt->UpdateAircraftOpentopped();
-
 	return 0;
 }
 
@@ -1230,6 +1226,7 @@ DEFINE_HOOK(0x4DF3A6, FootClass_UpdateAttackMove_Follow, 0x6)
 
 #pragma endregion
 
+
 DEFINE_HOOK(0x708FC0, TechnoClass_ResponseMove_Pickup, 0x5)
 {
 	enum { SkipResponse = 0x709015 };
@@ -1284,7 +1281,7 @@ DEFINE_HOOK(0x6F5190, TechnoClass_DrawIt_ShowTechnoNames, 0x6)
 
 	// Get TechnoType name
 	const char* technoTypeName = pThis->GetTechnoType()->ID;
-	
+
 	// Convert to wide string for display
 	wchar_t wideTypeName[256];
 	MultiByteToWideChar(CP_ACP, 0, technoTypeName, -1, wideTypeName, 256);
@@ -1295,11 +1292,9 @@ DEFINE_HOOK(0x6F5190, TechnoClass_DrawIt_ShowTechnoNames, 0x6)
 
 	// Get player color (convert to COLORREF)
 	COLORREF playerColor = Drawing::RGB_To_Int(pThis->Owner->Color);
-	
+
 	// Draw text only (no background)
 	DSurface::Composite->DrawText(wideTypeName, &nPoint, playerColor);
 
 	return 0;
 }
-
-#pragma endregion

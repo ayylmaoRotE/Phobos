@@ -31,9 +31,6 @@ public:
 	{
 	public:
 		Valueable<bool> HealthBar_Hide;
-		Valueable<bool> HealthBar_HidePips;
-		Valueable<bool> HealthBar_Permanent;
-		Valueable<bool> HealthBar_Permanent_PipScale;
 		Valueable<CSFText> UIDescription;
 		Valueable<bool> LowSelectionPriority;
 		PhobosFixedString<0x20> GroupAs;
@@ -450,15 +447,12 @@ public:
 
 		Nullable<bool> InfantryAutoDeploy;
 
+		bool Harvester_AutoReturn_GlobalEligible;
 		Nullable<bool> TurretResponse;
-
 		GiftBoxData MyGiftBoxData;
 
 		ExtData(TechnoTypeClass* OwnerObject) : Extension<TechnoTypeClass>(OwnerObject)
 			, HealthBar_Hide { false }
-			, HealthBar_HidePips { false }
-			, HealthBar_Permanent { false }
-			, HealthBar_Permanent_PipScale { false }
 			, UIDescription {}
 			, LowSelectionPriority { false }
 			, GroupAs { NONE_STR }
@@ -845,7 +839,9 @@ public:
 
 			, InfantryAutoDeploy {}
 
+			, Harvester_AutoReturn_GlobalEligible { false }
 			, TurretResponse {}
+
 		{ }
 
 		void FireExtraWeapons(TechnoClass* pThis, AbstractClass* pTarget, int weaponIndex) const;

@@ -9,23 +9,41 @@ bool LaserTrailClass::Update(CoordStruct location)
 {
 	bool result = false;
 
+	// First update since construction/reset
 	if (!this->LastLocation.isset())
 	{
-		// The trail was just inited
 		this->LastLocation = location;
+		return result;
 	}
-	else if (location.DistanceFrom(this->LastLocation.Get()) > this->Type->SegmentLength) // TODO reimplement IgnoreVertical properly?
-	{
-		auto const pType = this->Type;
 
-		// We spawn new laser segment if the distance is long enough, the game will do the rest - Kerbiter
-		if (this->Visible && !this->Cloaked && (pType->IgnoreVertical ? (abs(location.X - this->LastLocation.Get().X) > 16 || abs(location.Y - this->LastLocation.Get().Y) > 16) : true))
+	// Snapshot locals to avoid multiple nullable.Get() and pointer indirections
+	const auto last = this->LastLocation.Get();
+	const auto pType = this->Type;
+
+	// Distance gate (3D): avoid sqrt by comparing squared values.
+	const long long dx = static_cast<long long>(location.X) - last.X;
+	const long long dy = static_cast<long long>(location.Y) - last.Y;
+	const long long dz = static_cast<long long>(location.Z) - last.Z;
+	const long long dist2 = dx * dx + dy * dy + dz * dz;
+
+	//  use cached squared threshold (precomputed at type load)
+	const long long seg2 = static_cast<long long>(pType->SegmentLengthSq);
+
+	if (dist2 > seg2) // TODO reimplement IgnoreVertical properly? (kept as-is)
+	{
+		// We spawn a new segment only if visible and not cloaked.
+		const bool xyMovedEnough =
+			pType->IgnoreVertical
+			? (abs(static_cast<int>(dx)) > 16 || abs(static_cast<int>(dy)) > 16)
+			: true;
+
+		if (this->Visible && !this->Cloaked && xyMovedEnough)
 		{
 			if (pType->DrawType == LaserTrailDrawType::Laser)
 			{
 				const auto pLaser = GameCreate<LaserDrawClass>(
-					this->LastLocation.Get(), location,
-					this->CurrentColor, ColorStruct { 0, 0, 0 }, ColorStruct { 0, 0, 0 },
+					last, location,
+					this->CurrentColor, ColorStruct{ 0, 0, 0 }, ColorStruct { 0, 0, 0 },
 					pType->FadeDuration.Get(64));
 
 				pLaser->Thickness = pType->Thickness;
@@ -46,15 +64,24 @@ bool LaserTrailClass::Update(CoordStruct location)
 				for (int idx = 0; idx < 3; ++idx)
 				{
 					if (boltDisable[idx])
+					{
 						pBoltExt->Disable[idx] = true;
+					}
 					else if (boltColor[idx].isset())
+					{
 						pBoltExt->Color[idx] = boltColor[idx].Get();
+					}
 					else
+					{
 						pBoltExt->Color[idx] = Drawing::Int_To_RGB(idx < 2 ? defaultAlternate : defaultWhite);
+					}
 				}
 
 				pBoltExt->Arcs = pType->Bolt_Arcs;
-				pBolt->Lifetime = 1 << (std::clamp(pType->FadeDuration.Get(17), 1, 31) - 1);
+
+				int fade = pType->FadeDuration.Get(17);
+				fade = clampInt(fade, 1, 31);
+				pBolt->Lifetime = 1 << (fade - 1);
 				pBolt->AlternateColor = pType->IsAlternateColor;
 
 				pBolt->Fire(this->LastLocation, location, 0);
