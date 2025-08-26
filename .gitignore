@@ -27,3 +27,6 @@ out
 
 # Python virtual environment for docs
 .venv/
+.claude/
+SW_AuxTechnos_*.md
+SW_AuxTechnos_*_Test.ini
