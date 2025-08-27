@@ -179,6 +179,12 @@ void WarheadTypeExt::ExtData::Detonate(TechnoClass* pOwner, HouseClass* pHouse, 
 			for (auto const pTarget : targets)
 				this->DetonateOnOneUnit(pHouse, pTarget, pOwner, bulletWasIntercepted);
 
+			// Apply area-based conversion for warheads with CellSpread
+			if (this->Convert_Pairs.size() > 0)
+			{
+				this->ApplyRangeBasedConversion(pHouse, coords, cellSpread);
+			}
+
 			if (this->Transact)
 			{
 				std::vector<TechnoClass*> transactTargets(targets.begin(), targets.end());
@@ -270,7 +276,8 @@ void WarheadTypeExt::ExtData::DetonateOnOneUnit(HouseClass* pHouse, TechnoClass*
 	if (this->Crit_CurrentChance > 0.0 && (!this->Crit_SuppressWhenIntercepted || !bulletWasIntercepted))
 		this->ApplyCrit(pHouse, pTarget, pOwner);
 
-	if (this->Convert_Pairs.size() > 0)
+	// Only apply individual target conversion for single-target warheads (CellSpread < 0.1)
+	if (this->Convert_Pairs.size() > 0 && std::abs(this->OwnerObject()->CellSpread) < 0.1f)
 		this->ApplyConvert(pHouse, pTarget);
 
 	if (this->AttachEffects.AttachTypes.size() > 0 || this->AttachEffects.RemoveTypes.size() > 0 || this->AttachEffects.RemoveGroups.size() > 0)
@@ -627,7 +634,41 @@ void WarheadTypeExt::ExtData::ApplyConvert(HouseClass* pHouse, TechnoClass* pTar
 	if (!pTargetFoot)
 		return;
 
-	TypeConvertGroup::Convert(pTargetFoot, this->Convert_Pairs, pHouse);
+	TypeConvertGroup::Convert(pTargetFoot, this->Convert_Pairs, pHouse, this->ConvertAnim.Get());
+}
+
+void WarheadTypeExt::ExtData::ApplyRangeBasedConversion(HouseClass* pHouse, const CoordStruct& coords, float cellSpread)
+{
+	if (this->Convert_Pairs.empty())
+		return;
+
+	// Use similar logic to SuperWeapons but with warhead's CellSpread
+	const float rangeLeptons = cellSpread * Unsorted::LeptonsPerCell;
+	const float rangeSquared = rangeLeptons * rangeLeptons;
+
+	for (const auto pTechno : TechnoClass::Array)
+	{
+		auto pTargetFoot = abstract_cast<FootClass*>(pTechno);
+		if (!pTargetFoot)
+			continue;
+
+		// Skip dead/dying units but allow passengers (InLimbo with Transporter)
+		if (pTargetFoot->Health <= 0 || !pTargetFoot->IsAlive || pTargetFoot->IsCrashing || pTargetFoot->IsSinking)
+			continue;
+
+		// Skip units in limbo that are NOT passengers
+		if (pTargetFoot->InLimbo && !pTargetFoot->Transporter)
+			continue;
+
+		// For passengers, use the transporter's location for distance calculation
+		const CoordStruct unitCoords = pTargetFoot->InLimbo && pTargetFoot->Transporter
+			? pTargetFoot->Transporter->GetCoords()
+			: pTargetFoot->GetCoords();
+		const float distanceSquared = (float)(coords - unitCoords).MagnitudeSquared();
+
+		if (distanceSquared <= rangeSquared)
+			TypeConvertGroup::Convert(pTargetFoot, this->Convert_Pairs, pHouse, this->ConvertAnim.Get());
+	}
 }
 
 void WarheadTypeExt::ExtData::ApplyLocomotorInfliction(TechnoClass* pTarget)

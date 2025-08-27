@@ -117,6 +117,8 @@ public:
 
 		// ExtraFire ROF timers - not serialized, reset on load
 		std::map<WeaponTypeClass*, CDTimerClass> ExtraFireTimers;
+		
+		bool AircraftOpentoppedInitEd;
 
 		ExtData(TechnoClass* OwnerObject) : Extension<TechnoClass>(OwnerObject)
 			, TypeExtData { nullptr }
@@ -179,6 +181,7 @@ public:
 			, Harvester_AutoReturn_CombatTimer { 90 }
 			, Harvester_AutoReturn_IssueCooldown { 200 }
 			, Harvester_AutoReturn_Flags { 0 }
+			, AircraftOpentoppedInitEd { false }
 		{ }
 
 		void OnEarlyUpdate();
@@ -216,7 +219,7 @@ public:
 		int ApplyForceWeaponInRange(AbstractClass* pTarget);
 		void ResetDelayedFireTimer();
 		void UpdateTintValues();
-
+		void UpdateAircraftOpentopped();
 		void UpdateHarvesterAutoReturn();
 
 		virtual ~ExtData() override;

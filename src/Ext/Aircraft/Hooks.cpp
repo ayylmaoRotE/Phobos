@@ -626,6 +626,21 @@ DEFINE_HOOK(0x418CD1, AircraftClass_Mission_Attack_ContinueFlyToDestination, 0x6
 	return Return;
 }
 
+AbstractClass* __fastcall AircraftClass_GreatestThreat(AircraftClass* pThis, void* _, ThreatType threatType, CoordStruct* pSelectCoords, bool onlyTargetHouseEnemy)
+{
+	if (RulesExt::Global()->ExtendedAircraftMissions && !pThis->Team && pThis->Ammo && !pThis->Airstrike && !pThis->Spawned)
+	{
+		if (const auto pPrimaryWeapon = pThis->GetWeapon(0)->WeaponType)
+			threatType |= pPrimaryWeapon->AllowedThreats();
+
+		if (const auto pSecondaryWeapon = pThis->GetWeapon(1)->WeaponType)
+			threatType |= pSecondaryWeapon->AllowedThreats();
+	}
+
+	return pThis->FootClass::GreatestThreat(threatType, pSelectCoords, onlyTargetHouseEnemy);
+}
+DEFINE_FUNCTION_JUMP(VTABLE, 0x7E2668, AircraftClass_GreatestThreat)
+
 // Handle assigning area guard mission to aircraft.
 DEFINE_HOOK(0x4C7403, EventClass_Execute_AircraftAreaGuard, 0x6)
 {

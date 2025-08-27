@@ -159,6 +159,7 @@ public:
 		ValueableVector<TechnoTypeClass*> DetonateOnAllMapObjects_IgnoreTypes;
 
 		std::vector<TypeConvertGroup> Convert_Pairs;
+		Nullable<AnimTypeClass*> ConvertAnim;
 		AEAttachInfoTypeClass AttachEffects;
 
 		Valueable<bool> InflictLocomotor;
@@ -373,6 +374,7 @@ public:
 			, DetonateOnAllMapObjects_IgnoreTypes {}
 
 			, Convert_Pairs {}
+			, ConvertAnim {}
 			, AttachEffects {}
 
 			, InflictLocomotor { false }
@@ -445,6 +447,7 @@ public:
 		{ }
 
 		void ApplyConvert(HouseClass* pHouse, TechnoClass* pTarget);
+		void ApplyRangeBasedConversion(HouseClass* pHouse, const CoordStruct& coords, float cellSpread);
 		void ApplyLocomotorInfliction(TechnoClass* pTarget);
 		void ApplyLocomotorInflictionReset(TechnoClass* pTarget);
 	public:

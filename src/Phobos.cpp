@@ -9,6 +9,7 @@
 #include <Utilities/Macro.h>
 #include "Utilities/AresHelper.h"
 #include "Utilities/Parser.h"
+#include <Ext/TechnoType/Body.h>
 
 #ifndef IS_RELEASE_VER
 bool HideWarning = false;
@@ -224,6 +225,7 @@ DEFINE_HOOK(0x67E68A, LoadGame_UnsetFlag, 0x5)
 {
 	Phobos::IsLoadingSaveGame = false;
 	Phobos::ApplyOptimizations();
+
 	return 0;
 }
 
@@ -270,13 +272,13 @@ void Phobos::ApplyOptimizations()
 	if (Phobos::Optimizations::DisableRadDamageOnBuildings)
 		Patch::Apply_RAW(0x43FB23, { 0x53, 0x55, 0x56, 0x8B, 0xF1 });
 
-	else
+	if (!SessionClass::IsMultiplayer())
 	{
 		// Disable Random2Class_Random_SyncLog
-		Patch::Apply_RAW(0x65C7D0, { 0xC3, 0x90, 0x90, 0x90, 0x90, 0x90 });
+		Patch::Apply_RAW(0x65C7D0, { 0xC3, 0x90, 0x90, 0x90, 0x90 });
 
 		// Disable Random2Class_RandomRanged_SyncLog
-		Patch::Apply_RAW(0x65C88A, { 0xC2, 0x08, 0x00, 0x90, 0x90, 0x90 });
+		Patch::Apply_RAW(0x65C88A, { 0xC2, 0x08, 0x00, 0x90, 0x90 });
 
 		// Disable FacingClass_Set_SyncLog
 		Patch::Apply_RAW(0x4C9300, { 0x83, 0xEC, 0x10, 0x53, 0x56 });

@@ -496,6 +496,7 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 		Debug::Log("[Developer warning][%s] AffectsAbovePercent is bigger than AffectsBelowPercent, the warhead will never activate!\n", pSection);
 
 	this->ReverseEngineer.Read(exINI, pSection, "ReverseEngineer");
+	this->ConvertAnim.Read(exINI, pSection, "ConvertAnim");
 
 	// Convert.From & Convert.To
 	TypeConvertGroup::Parse(this->Convert_Pairs, exINI, pSection, AffectedHouse::All);
@@ -768,6 +769,7 @@ void WarheadTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->DetonateOnAllMapObjects_IgnoreTypes)
 
 		.Process(this->Convert_Pairs)
+		.Process(this->ConvertAnim)
 		.Process(this->AttachEffects)
 
 		.Process(this->SuppressRevengeWeapons)

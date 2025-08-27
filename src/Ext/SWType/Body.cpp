@@ -74,6 +74,8 @@ void SWTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->SW_Next_RollChances)
 		.Process(this->ShowTimer_Priority)
 		.Process(this->Convert_Pairs)
+		.Process(this->Convert_UseSWRange)
+		.Process(this->ConvertAnim)
 		.Process(this->ShowDesignatorRange)
 		.Process(this->TabIndex)
 		.Process(this->SuperWeaponSidebar_Allow)
@@ -260,6 +262,8 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 
 	// Convert.From & Convert.To
 	TypeConvertGroup::Parse(this->Convert_Pairs, exINI, pSection, AffectedHouse::Owner);
+	this->Convert_UseSWRange.Read(exINI, pSection, "Convert.UseSWRange");
+	this->ConvertAnim.Read(exINI, pSection, "ConvertAnim");
 
 	this->ShowDesignatorRange.Read(exINI, pSection, "ShowDesignatorRange");
 

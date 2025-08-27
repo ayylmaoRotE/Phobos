@@ -1,7 +1,8 @@
 #include <Ext/Techno/Body.h>
+#include <AnimClass.h>
 #include "TypeConvertGroup.h"
 
-void TypeConvertGroup::Convert(FootClass* pTargetFoot, const std::vector<TypeConvertGroup>& convertPairs, HouseClass* pOwner)
+void TypeConvertGroup::Convert(FootClass* pTargetFoot, const std::vector<TypeConvertGroup>& convertPairs, HouseClass* pOwner, AnimTypeClass* pConvertAnim)
 {
 	for (const auto& [fromTypes, toType, affectedHouses] : convertPairs)
 	{
@@ -18,14 +19,48 @@ void TypeConvertGroup::Convert(FootClass* pTargetFoot, const std::vector<TypeCon
 				// Check if the target matches upgrade-from TechnoType and it has something to upgrade to
 				if (from == pTargetFoot->GetTechnoType())
 				{
-					TechnoExt::ConvertToType(pTargetFoot, toType);
+					if (TechnoExt::ConvertToType(pTargetFoot, toType))
+					{
+						// Play conversion animation if specified
+						if (pConvertAnim)
+						{
+							TechnoClass* pDrawer = pTargetFoot;
+							if (pTargetFoot->InLimbo && pTargetFoot->Transporter)
+								pDrawer = pTargetFoot->Transporter;
+							else if (pTargetFoot->InLimbo && !pTargetFoot->Transporter)
+								pDrawer = nullptr;
+
+							if (pDrawer)
+							{
+								auto pAnim = GameCreate<AnimClass>(pConvertAnim, pDrawer->Location);
+								pAnim->SetOwnerObject(pDrawer);
+							}
+						}
+					}
 					goto end; // Breaking out of nested loops without extra checks one of the very few remaining valid usecases for goto, leave it be.
 				}
 			}
 		}
 		else
 		{
-			TechnoExt::ConvertToType(pTargetFoot, toType);
+			if (TechnoExt::ConvertToType(pTargetFoot, toType))
+			{
+				// Play conversion animation if specified
+				if (pConvertAnim)
+				{
+					TechnoClass* pDrawer = pTargetFoot;
+					if (pTargetFoot->InLimbo && pTargetFoot->Transporter)
+						pDrawer = pTargetFoot->Transporter;
+					else if (pTargetFoot->InLimbo && !pTargetFoot->Transporter)
+						pDrawer = nullptr;
+
+					if (pDrawer)
+					{
+						auto pAnim = GameCreate<AnimClass>(pConvertAnim, pDrawer->Location);
+						pAnim->SetOwnerObject(pDrawer);
+					}
+				}
+			}
 			break;
 		}
 	}
