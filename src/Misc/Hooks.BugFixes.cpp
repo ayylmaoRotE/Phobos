@@ -1372,20 +1372,44 @@ Point2D* __stdcall JumpjetLoco_ILoco_Shadow_Point(ILocomotion* iloco, Point2D* p
 	__assume(iloco != nullptr);
 	const auto pLoco = static_cast<JumpjetLocomotionClass*>(iloco);
 	const auto pThis = pLoco->LinkedTo;
-	const auto pCell = MapClass::Instance.GetCellAt(pThis->Location);
-	auto height = pThis->Location.Z - MapClass::Instance.GetCellFloorHeight(pThis->Location);
-	// Vanilla GetHeight check OnBridge flag, which can not work on jumpjet
-	// Here, we simulate the drawing of an airplane for altitude calculation
-	if (pCell->ContainsBridge()
-		&& ((pCell->Flags & CellFlags::BridgeDir) && pCell->GetNeighbourCell(FacingType::North)->ContainsBridge()
-			|| !(pCell->Flags & CellFlags::BridgeDir) && pCell->GetNeighbourCell(FacingType::West)->ContainsBridge()))
+
+	// Don’t touch map cells while teleporting or in limbo
+	if (!pThis || pThis->InLimbo || pThis->IsWarpingIn() || pThis->WarpingOut)
 	{
-		height -= CellClass::BridgeHeight;
+		return pPoint;
+	}
+
+	// Use TryGetCellAt – Location can be off-map for a frame in edge cases
+	CellClass* const pCell = MapClass::Instance.TryGetCellAt(pThis->Location);
+	if (!pCell)
+	{
+		return pPoint; // off-map → no change
+	}
+
+	auto height = pThis->Location.Z - MapClass::Instance.GetCellFloorHeight(pThis->Location);
+
+	// Bridge correction with safe neighbours
+	if (pCell->ContainsBridge())
+	{
+		// *** fix: don’t compare enum flags to 0; cast to bool instead
+		const bool dirNorth = static_cast<bool>(pCell->Flags & CellFlags::BridgeDir);
+
+		CellClass* const north = pCell->GetNeighbourCell(FacingType::North);
+		CellClass* const west = pCell->GetNeighbourCell(FacingType::West);
+
+		const bool okNorth = (north != nullptr) && north->ContainsBridge();
+		const bool okWest = (west != nullptr) && west->ContainsBridge();
+
+		if ((dirNorth && okNorth) || (!dirNorth && okWest))
+		{
+			height -= CellClass::BridgeHeight;
+		}
 	}
 
 	*pPoint = Point2D { 0, TacticalClass::AdjustForZ(height) };
 	return pPoint;
 }
+
 DEFINE_FUNCTION_JUMP(VTABLE, 0x7ECD98, JumpjetLoco_ILoco_Shadow_Point);
 
 #pragma endregion

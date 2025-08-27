@@ -114,21 +114,31 @@ DEFINE_HOOK(0x4197F3, AircraftClass_GetFireLocation_Strafing, 0x5)
 	GET(AircraftClass*, pThis, EDI);
 	GET(AbstractClass*, pTarget, EAX);
 
-	auto const pObj = abstract_cast<ObjectClass*>(pTarget);
+	auto* const pObj = abstract_cast<ObjectClass*>(pTarget);
 	if (!pObj || !pObj->IsInAir())
+	{
 		return 0;
+	}
 
 	int weaponIndex = TechnoExt::ExtMap.Find(pThis)->CurrentAircraftWeaponIndex;
 	if (weaponIndex < 0)
+	{
 		weaponIndex = pThis->SelectWeapon(pTarget);
+	}
 	if (weaponIndex < 0)
+	{
 		return 0;
+	}
 
 	const auto err = pThis->GetFireError(pTarget, weaponIndex, false);
 	if (err == FireError::ILLEGAL || err == FireError::CANT)
+	{
 		return 0;
+	}
 
-	R->EAX(MapClass::Instance.GetCellAt(pObj->GetCoords()));
+	// SAFETY: coords may be off-map in rare frames; tolerate nullptr
+	auto* const cell = MapClass::Instance.TryGetCellAt(pObj->GetCoords());
+	R->EAX(cell); // caller must accept null here (vanilla does)
 	return 0;
 }
 
@@ -500,45 +510,70 @@ DEFINE_HOOK(0x4CF3D0, FlyLocomotionClass_FlightUpdate_SetFlightLevel, 0x7)
 {
 	GET(FootClass** const, pFootPtr, ESI);
 	const auto pAircraft = abstract_cast<AircraftClass*, true>(*pFootPtr);
-	if (!pAircraft) return 0;
+	if (!pAircraft) { return 0; }
 
 	const auto pType = pAircraft->Type;
-	if (pType->HunterSeeker) return 0;
+	if (pType->HunterSeeker) { return 0; }
 
-	if (!TechnoTypeExt::ExtMap.Find(pType)->ExtendedAircraftMissions_EarlyDescend.Get(RulesExt::Global()->ExtendedAircraftMissions))
+	if (!TechnoTypeExt::ExtMap.Find(pType)->ExtendedAircraftMissions_EarlyDescend
+			.Get(RulesExt::Global()->ExtendedAircraftMissions))
+	{
 		return 0;
+	}
 
 	enum { SkipGameCode = 0x4CF4D2 };
+
 	GET_STACK(FlyLocomotionClass* const, pThis, STACK_OFFSET(0x48, -0x28));
 	GET(const int, distance, EBX);
 
-	R->EBP(pThis); // restore
+	// restore EBP as the original code expects
+	R->EBP(pThis);
 
+	// Early-elevate stage: use destination floor height – only if destination cell is valid
 	if (pThis->IsElevating && distance < 768)
 	{
-		const auto floorHeight = MapClass::Instance.GetCellFloorHeight(pThis->MovingDestination);
-		pThis->FlightLevel = pThis->MovingDestination.Z - floorHeight;
+		if (MapClass::Instance.TryGetCellAt(pThis->MovingDestination))
+		{
+			const auto floorHeight = MapClass::Instance.GetCellFloorHeight(pThis->MovingDestination);
+			pThis->FlightLevel = pThis->MovingDestination.Z - floorHeight;
 
-		if (MapClass::Instance.GetCellAt(pAircraft->Location)->ContainsBridge() && pThis->FlightLevel >= CellClass::BridgeHeight)
-			pThis->FlightLevel -= CellClass::BridgeHeight;
-
-		return SkipGameCode;
+			// Bridge correction – only if current location cell exists
+			if (const auto* locCell = MapClass::Instance.TryGetCellAt(pAircraft->Location))
+			{
+				if (locCell->ContainsBridge() && pThis->FlightLevel >= CellClass::BridgeHeight)
+				{
+					pThis->FlightLevel -= CellClass::BridgeHeight;
+				}
+			}
+			return SkipGameCode;
+		}
+		// If dest is off-map this tick, fall through to default below
 	}
 
 	const auto flightLevel = pType->GetFlightLevel();
 
+	// Smooth descent toward docks/spawn owner – only if destination cell is valid
 	if (distance < pType->SlowdownDistance && pAircraft->Destination
-		&& (pAircraft->DockNowHeadingTo == pAircraft->Destination || pAircraft->SpawnOwner == pAircraft->Destination))
+		&& (pAircraft->DockNowHeadingTo == pAircraft->Destination
+			|| pAircraft->SpawnOwner == pAircraft->Destination))
 	{
-		const auto floorHeight = MapClass::Instance.GetCellFloorHeight(pThis->MovingDestination);
-		const auto destHeight = pThis->MovingDestination.Z - floorHeight + 1;
-		pThis->FlightLevel = static_cast<int>((flightLevel - destHeight) * (static_cast<double>(distance) / pType->SlowdownDistance)) + destHeight;
-	}
-	else
-	{
-		pThis->FlightLevel = flightLevel;
+		if (MapClass::Instance.TryGetCellAt(pThis->MovingDestination))
+		{
+			const auto floorHeight = MapClass::Instance.GetCellFloorHeight(pThis->MovingDestination);
+			const auto destHeight = pThis->MovingDestination.Z - floorHeight + 1;
+
+			// vanilla interpolation retained
+			pThis->FlightLevel = static_cast<int>(
+				(flightLevel - destHeight) * (static_cast<double>(distance) / pType->SlowdownDistance)
+			) + destHeight;
+
+			return SkipGameCode;
+		}
+		// If dest is invalid, fall back to default level below
 	}
 
+	// Default behaviour
+	pThis->FlightLevel = flightLevel;
 	return SkipGameCode;
 }
 
