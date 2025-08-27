@@ -827,8 +827,6 @@ void WarheadTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->PossibleCellSpreadDetonate)
 		.Process(this->Reflected)
 		.Process(this->DamageAreaTarget)
-
-		.Process(this->CanKill)
 		
 		// Serialize stable parallel vectors instead of raw pointers
 		.Process(this->ArmorNames)
