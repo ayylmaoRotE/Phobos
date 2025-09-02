@@ -1366,26 +1366,45 @@ void Manager::OnKill(TechnoClass* victim, HouseClass* killerOwner, bool victimIs
 
 void Manager::OnBuild(BuildingClass* built)
 {
-	if (!gContractsEnabled) return; // NEW guard
+	if (!gContractsEnabled) return;
 	if (activeContractIndex < 0 || !built) return;
+
 	const auto& cd = Contracts[activeContractIndex];
 	if (cd.kind != ContractKind::FirstBuild) return;
 
-	if (cd.types.empty()) return;
-	auto* bt = built->Type;
-	bool ok = false;
-	for (auto* t : cd.types) if (t == bt) { ok = true; break; }
-	if (!ok) return;
+	// If Types list is given, only count those. If empty, you can either:
+	//   (A) return (current behavior), or
+	//   (B) count any building. Uncomment next line to allow any:
+	// if (cd.types.empty()) { /* count any */ } else
+	if (!cd.types.empty())
+	{
+		auto* bt = built->Type;
+		bool ok = false;
+		for (auto* t : cd.types) if (t == bt) { ok = true; break; }
+		if (!ok) return;
+	}
+	else
+	{
+		// Keep existing semantics: no types => don't count.
+		return;
+	}
 
+	// Add +1 for the team that owns this building
 	HouseClass* owner = built->Owner;
 	for (auto& c : Competitors)
 	{
-		bool belongs = false; for (auto* h : c.members) if (h == owner) { belongs = true; break; }
+		bool belongs = false;
+		for (auto* h : c.members) if (h == owner) { belongs = true; break; }
 		if (!belongs) continue;
 
-		c.progress = activeRequired;
-		if (const auto* rw = pickRewardSync()) applyReward(rw, c);
-		startNewContract();
+		// cumulative progress instead of "instant complete"
+		++c.progress;
+
+		if (c.progress >= activeRequired)
+		{
+			if (const auto* rw = pickRewardSync()) applyReward(rw, c);
+			startNewContract();
+		}
 		return;
 	}
 }
