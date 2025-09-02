@@ -19,7 +19,9 @@
 #include <Utilities/AresHelper.h>
 #include <Utilities/AresFunctions.h>
 #include <New/AnonymousType/GiftBoxFunctional.h>
+#include <New/Contracts/ContractEvents.h>
 #include <Drawing.h>
+
 
 #pragma region GetTechnoType
 
@@ -545,6 +547,10 @@ DEFINE_HOOK(0x702E4E, TechnoClass_RegisterDestruction_SaveKillerInfo, 0x6)
 	if (pKiller && pVictim)
 		TechnoExt::ObjectKilledBy(pVictim, pKiller);
 
+	
+	HouseClass* pKillerHouse = pKiller ? pKiller->Owner : nullptr;
+
+	Contracts::OnKilled(pVictim, pKillerHouse, pVictim && pVictim->WhatAmI() == AbstractType::Building);
 	return 0;
 }
 

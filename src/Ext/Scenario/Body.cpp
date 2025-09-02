@@ -1,5 +1,5 @@
 #include "Body.h"
-
+#include <New/Contracts/ContractEvents.h>
 #include <SessionClass.h>
 #include <VeinholeMonsterClass.h>
 
@@ -255,6 +255,7 @@ DEFINE_HOOK(0x68AD2F, ScenarioClass_LoadFromINI, 0x5)
 	GET(CCINIClass*, pINI, EDI);
 
 	ScenarioExt::LoadFromINIFile(pItem, pINI);
+	Contracts::LoadScenarioOverrides(pINI);
 	return 0;
 }
 

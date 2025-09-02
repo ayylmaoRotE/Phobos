@@ -34,6 +34,8 @@
     <ClCompile Include="src\Misc\BeaconTTL.cpp" />
     <ClCompile Include="src\New\AISell\AICaptureSell.cpp" />
     <ClCompile Include="src\New\AISell\AIHPSell.cpp" />
+    <ClCompile Include="src\New\Contracts\ContractBountyManager.cpp" />
+    <ClCompile Include="src\New\Contracts\ContractEvents.cpp" />
     <ClCompile Include="src\New\Type\Affiliated\CreateUnitTypeClass.cpp" />
     <ClCompile Include="src\Blowfish\blowfish.cpp" />
     <ClCompile Include="src\Blowfish\Hooks.Blowfish.cpp" />
@@ -95,7 +97,6 @@
     <ClCompile Include="src\Ext\Team\Body.cpp" />
     <ClCompile Include="src\Ext\Team\Hooks.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Pips.cpp" />
-    <ClCompile Include="src\Ext\Techno\Body.Visuals.cpp" />
     <ClCompile Include="src\Ext\TEvent\Hooks.cpp" />
     <ClCompile Include="src\Ext\TEvent\Body.cpp" />
     <ClCompile Include="src\Ext\Trigger\Hooks.cpp" />
@@ -236,6 +237,8 @@
     <ClInclude Include="src\Misc\BeaconTTL.h" />
     <ClInclude Include="src\New\AISell\AICaptureSell.h" />
     <ClInclude Include="src\New\AISell\AIHPSell.h" />
+    <ClInclude Include="src\New\Contracts\ContractBountyManager.h" />
+    <ClInclude Include="src\New\Contracts\ContractEvents.h" />
     <ClInclude Include="src\New\Type\Affiliated\CreateUnitTypeClass.h" />
     <ClInclude Include="src\Blowfish\blowfish.h" />
     <ClInclude Include="src\Ext\Cell\Body.h" />

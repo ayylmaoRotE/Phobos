@@ -3,6 +3,8 @@
 #include <BitFont.h>
 
 #include <Utilities/EnumFunctions.h>
+#include <New/Contracts/ContractEvents.h>
+
 
 BuildingExt::ExtContainer BuildingExt::ExtMap;
 
@@ -639,10 +641,11 @@ DEFINE_JUMP(LJMP, 0x41D9FB, 0x41DA05);
 
 void __fastcall BuildingClass_InfiltratedBy_Wrapper(BuildingClass* pThis, void*, HouseClass* pInfiltratorHouse)
 {
+	
 	const int oldBalance = pThis->Owner->Available_Money();
 	// explicitly call because Ares rewrote it
 	reinterpret_cast<void(__thiscall*)(BuildingClass*, HouseClass*)>(0x4571E0)(pThis, pInfiltratorHouse);
-
+	Contracts::OnInfiltrated(pInfiltratorHouse, pThis);
 	BuildingExt::ExtMap.Find(pThis)->HandleInfiltrate(pInfiltratorHouse, oldBalance);
 }
 

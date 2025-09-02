@@ -1,7 +1,7 @@
 #include <MessageListClass.h>
 #include <WWMouseClass.h>
 #include <Ext/Scenario/Body.h>
-
+#include <New/Contracts/ContractEvents.h>
 
 
 namespace MessageTemp
@@ -73,6 +73,9 @@ DEFINE_HOOK(0x4F4583, GScreenClass_NewMessageListDraw, 0x6)
 
 	if (const auto pList = ScenarioExt::Global()->NewMessageList.get())
 		pList->Draw();
+
+	// --- contracts: draw + tick (one cheap call per frame) ---
+	Contracts::DrawAndTick();
 
 	MessageTemp::NewMessageList = false;
 

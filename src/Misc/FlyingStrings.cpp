@@ -8,6 +8,7 @@
 #include <ScenarioClass.h>
 #include <BitFont.h>
 #include <Utilities/EnumFunctions.h>
+#include <New/Contracts/ContractEvents.h>
 
 std::vector<FlyingStrings::Item> FlyingStrings::Data;
 
@@ -37,6 +38,10 @@ void FlyingStrings::AddMoneyString(int amount, HouseClass* owner, AffectedHouse 
 			|| (owner && EnumFunctions::CanTargetHouse(displayToHouses, owner, HouseClass::CurrentPlayer))))
 	{
 		const bool isPositive = (amount > 0);
+		if (owner && isPositive)
+		{
+			Contracts::OnMoneyEarned(owner, amount);
+		}
 		const ColorStruct color = isPositive ? ColorStruct { 0, 255, 0 } : ColorStruct { 255, 0, 0 };
 
 		wchar_t moneyStr[0x20];

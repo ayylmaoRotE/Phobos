@@ -91,6 +91,7 @@ DEFINE_HOOK_AGAIN(0x55D871, MainLoop_FrameStep_End, 0x6)
 DEFINE_HOOK_AGAIN(0x55DEC1, MainLoop_FrameStep_End, 0x6)
 DEFINE_HOOK(0x55DED5, MainLoop_FrameStep_End, 0x6)
 {
+
 	// This frame is processed, decrease the counter
 	if (FrameByFrameCommandClass::FrameStep && FrameByFrameCommandClass::FrameStepCount > 0)
 		--FrameByFrameCommandClass::FrameStepCount;

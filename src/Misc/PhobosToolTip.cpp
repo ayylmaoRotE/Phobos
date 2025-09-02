@@ -268,6 +268,7 @@ DEFINE_HOOK(0x6A9316, SidebarClass_StripClass_HelpText, 0x6)
 	PhobosToolTip::Instance.IsCameo = true;
 
 	if (!PhobosToolTip::Instance.IsEnabled())
+
 		return 0;
 
 	GET(StripClass*, pThis, EAX);

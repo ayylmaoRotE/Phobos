@@ -11,6 +11,8 @@
 #include <TacticalClass.h>
 #include <PlanningTokenClass.h>
 #include <algorithm> // swap-erase helper
+#include <New/Contracts/ContractEvents.h>
+
 
 // Small deterministic swap-erase. Order is not semantically used for RestrictedFactoryPlants.
 template<typename TCont, typename TValue>
@@ -342,7 +344,7 @@ DEFINE_HOOK(0x440B4F, BuildingClass_Unlimbo_SetShouldRebuild, 0x5)
 	if (SessionClass::IsCampaign())
 	{
 		GET(BuildingClass* const, pThis, ESI);
-
+		
 		// Preplaced structures are already managed before
 		if (BuildingExt::ExtMap.Find(pThis)->IsCreatedFromMapFile)
 			return SkipSetShouldRebuild;
@@ -359,7 +361,9 @@ DEFINE_HOOK(0x440EBB, BuildingClass_Unlimbo_NaturalParticleSystem_CampaignSkip, 
 {
 	enum { DoNotCreateParticle = 0x440F61 };
 	GET(BuildingClass* const, pThis, ESI);
-	return BuildingExt::ExtMap.Find(pThis)->IsCreatedFromMapFile ? DoNotCreateParticle : 0;
+
+	auto* const ext = BuildingExt::ExtMap.Find(pThis);
+	return ext->IsCreatedFromMapFile ? DoNotCreateParticle : 0;
 }
 
 DEFINE_HOOK(0x4519A2, BuildingClass_UpdateAnim_SetParentBuilding, 0x6)
@@ -948,4 +952,21 @@ DEFINE_HOOK(0x4555E4, BuildingClass_IsPowerOnline_Overpower, 0x6)
 	}
 
 	return overPower < keepOnline ? LowPower : (R->Origin() == 0x4555E4 ? Continue1 : Continue2);
+}
+
+// You’re already hooking here:
+DEFINE_HOOK(0x446A75, BuildingClass_GrandOpening_OnBuilt, 0x5)
+{
+	GET(BuildingClass*, pThis, EBP);
+
+	// Recreate the overwritten instruction
+	R->ECX(pThis);                 // mov ecx, ebp
+
+	// Our code
+	Contracts::OnBuilt(pThis);
+
+	// IMPORTANT: skip the *entire* 7-byte store at 0x446A77.
+	// Continue at 0x446A7E (right after it), which is:
+	//   mov eax, [ebp+21Ch]
+	return 0x446A7E;
 }

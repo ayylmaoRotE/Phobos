@@ -16,6 +16,8 @@
 #include <New/Type/SelectBoxTypeClass.h>
 #include <Utilities/Patch.h>
 #include <Misc/BeaconTTL.h>
+#include <New/Contracts/ContractEvents.h>
+
 
 
 std::unique_ptr<RulesExt::ExtData> RulesExt::Data = nullptr;
@@ -33,6 +35,7 @@ void RulesExt::Remove(RulesClass* pThis)
 void RulesExt::LoadFromINIFile(RulesClass* pThis, CCINIClass* pINI)
 {
 	Data->LoadFromINI(pINI);
+	
 }
 
 void RulesExt::LoadBeforeTypeData(RulesClass* pThis, CCINIClass* pINI)
@@ -45,7 +48,6 @@ void RulesExt::LoadBeforeTypeData(RulesClass* pThis, CCINIClass* pINI)
 	AttachEffectTypeClass::LoadFromINIList(pINI);
 	BannerTypeClass::LoadFromINIList(pINI);
 	InsigniaTypeClass::LoadFromINIList(pINI);
-
 	Data->LoadBeforeTypeData(pThis, pINI);
 }
 
@@ -65,6 +67,7 @@ void RulesExt::LoadAfterTypeData(RulesClass* pThis, CCINIClass* pINI)
 		Data->InitializeAfterTypeData(pThis);
 
 	Data->LoadAfterTypeData(pThis, pINI);
+
 }
 
 void RulesExt::ExtData::InitializeConstants()
@@ -429,11 +432,14 @@ void RulesExt::ExtData::InitializeAfterTypeData(RulesClass* const pThis)
 void RulesExt::ExtData::InitializeAfterAllLoaded()
 {
 	const auto pRules = RulesClass::Instance;
+	
 
 	// tint color
 	this->TintColorIronCurtain = GeneralUtils::GetColorFromColorAdd(pRules->IronCurtainColor);
 	this->TintColorForceShield = GeneralUtils::GetColorFromColorAdd(pRules->ForceShieldColor);
 	this->TintColorBerserk = GeneralUtils::GetColorFromColorAdd(pRules->BerserkColor);
+
+	Contracts::LoadRules(CCINIClass::INI_Rules);
 }
 
 // =============================
@@ -803,19 +809,18 @@ DEFINE_HOOK(0x668F6A, RulesData_InitializeAfterAllLoaded, 0x5)
 {
 	Debug::Log("RulesData_InitializeAfterAllLoaded: Hook called, processing TechnoTypes\n");
 	RulesExt::Global()->InitializeAfterAllLoaded();
+	
 
-	// Complete initialization for all TechnoTypes now that everything is loaded
 	int processedCount = 0;
 	for (const auto& pTechnoType : TechnoTypeClass::Array)
 	{
 		if (auto pExt = TechnoTypeExt::ExtMap.Find(pTechnoType))
 		{
 			processedCount++;
-			// Debug::Log("Processing TechnoType %s for CompleteInitialization\n", pTechnoType->ID);
 			pExt->CompleteInitialization();
 		}
 	}
-
+	
 	Debug::Log("RulesData_InitializeAfterAllLoaded: Processed %d TechnoTypes\n", processedCount);
 	return 0;
 }

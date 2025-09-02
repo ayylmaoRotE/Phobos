@@ -838,6 +838,11 @@ void TechnoExt::ExtData::Serialize(T& Stm)
 		.Process(this->Harvester_AutoReturn_Flags)
 		.Process(this->MyGiftBox)
 		.Process(this->AircraftOpentoppedInitEd)
+		.Process(this->Harv_SuppressLastStopFrame)          // NEW: persist STOP frame
+		.Process(this->Harv_SuppressLastClearFrame)         // NEW: persist CLEAR frame
+		.Process(this->Harvester_AutoReturn_ConfirmFrame) // NEW: persist confirm latch
+		.Process(this->Harvester_AutoReturn_LastIssueFrame)
+		.Process(this->Harvester_AutoReturn_PendingStopFrame)
 		;
 }
 

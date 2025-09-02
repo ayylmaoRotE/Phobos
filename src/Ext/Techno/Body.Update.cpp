@@ -300,50 +300,119 @@ void TechnoExt::ExtData::UpdateHarvesterAutoReturn()
 {
 	auto* const pTechno = this->OwnerObject();
 	auto* const pUnit = abstract_cast<UnitClass*>(pTechno);
-	if (!pUnit || !IsMiner(pUnit)) return;
+	if (!pUnit) { return; }
 
-	auto* const typeExt = this->TypeExtData;
-	if (!typeExt || !typeExt->Harvester_AutoReturn_GlobalEligible)
-		return;
+	const auto* typeExt = this->TypeExtData;
+	if (!typeExt || !typeExt->Harvester_AutoReturn_GlobalEligible) { return; }
 
 	const auto rules = RulesExt::Global();
-	if (!rules || !rules->Harvester_AutoReturn_Enable)
-		return;
+	if (!rules || !rules->Harvester_AutoReturn_Enable) { return; }
 
-	// If your codebase doesn't have Harvester_AutoReturn_IsSuppressed(), remove this next guard.
-	if (this->Harvester_AutoReturn_IsSuppressed() && rules->Harvester_AutoReturn_SuppressOnStop)
-		return;
-
-	const auto mission = pUnit->CurrentMission;
-	if (mission == Mission::Harvest || mission == Mission::Return
-	 || mission == Mission::Unload || mission == Mission::Enter)
-		return;
-
-	if (!(mission == Mission::Guard || mission == Mission::Area_Guard))
-		return;
-
-	if (rules->Harvester_AutoReturn_OutOfCombatTicks > 0
-		&& !this->Harvester_AutoReturn_CombatTimer.Expired())
-		return;
-
-	if (!this->Harvester_AutoReturn_IssueCooldown.Expired())
-		return;
-
-	const int idleReq = std::max(0, rules->Harvester_AutoReturn_IdleTicks.Get());
-	if (idleReq > 0)
+	// --- Apply pending STOP in synced phase (deterministic across peers) ---
+	if (this->Harv_HasPendingStop())
 	{
-		const int elapsed = Unsorted::CurrentFrame - pUnit->CurrentMissionStartTime;
-		if (elapsed < idleReq) return;
+		// consume the one-shot per-frame mark
+		this->Harvester_AutoReturn_PendingStopFrame = INT32_MIN;
+
+		// latch suppression and stamp a STOP mark (persisted)
+		this->Harvester_AutoReturn_SetSuppressed(true);
+		this->Harv_MarkStopSuppress();
+
+		// Reset idle baseline identically on all peers
+		pUnit->CurrentMissionStartTime = Unsorted::CurrentFrame;
+
+		// Kill any in-flight confirm so nothing fires “next frame”
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
 	}
 
-	const int cargoPct = static_cast<int>(pUnit->GetStoragePercentage() * 100.0 + 0.5);
-	const int needPct = std::clamp(rules->Harvester_AutoReturn_CargoPercent.Get(), 0, 100);
-	if (cargoPct < needPct) return;
+	// --- Global & per-unit suppression guards ---
+	if (rules->Harvester_AutoReturn_SuppressOnStop && this->Harvester_AutoReturn_IsSuppressed())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
+		return;
+	}
+	if (this->Harv_IsSuppressed())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
+		return;
+	}
 
+	// Avoid decisions on the same frame we toggled STOP/CLEAR or (re)started Guard
+	const int nowFrame = (int)Unsorted::CurrentFrame;
+	if (this->Harv_SuppressLastStopFrame == nowFrame) { this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return; }
+	if (pUnit->CurrentMissionStartTime == nowFrame) { this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return; }
+
+	if (pUnit->InLimbo || pUnit->IsSinking || pUnit->IsBeingWarpedOut())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
+		return;
+	}
+	if (pUnit->Transporter || pUnit->IsInAir())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+	}
+
+	// Must be idling on guard for auto-return to be considered
+	auto const mission = pUnit->GetCurrentMission();
+	if (!(mission == Mission::Guard || mission == Mission::Area_Guard))
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+	}
+
+	// --- Out-of-combat & cooldown gates ---
+	if (rules->Harvester_AutoReturn_OutOfCombatTicks > 0
+		&& !this->Harvester_AutoReturn_CombatTimer.Expired())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+	}
+	if (!this->Harvester_AutoReturn_IssueCooldown.Expired())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+	}
+
+	// --- IdleTicks requirement ---
+	{
+		const int idleReq = std::max(0, rules->Harvester_AutoReturn_IdleTicks.Get());
+		if (idleReq > 0)
+		{
+			const int elapsed = Unsorted::CurrentFrame - pUnit->CurrentMissionStartTime;
+			if (elapsed < idleReq)
+			{
+				this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+			}
+		}
+	}
+
+	// --- Cargo percentage requirement ---
+	{
+		const int cargoPct = (int)(pUnit->GetStoragePercentage() * 100.0 + 0.5);
+		const int needPct = std::clamp(rules->Harvester_AutoReturn_CargoPercent.Get(), 0, 100);
+		if (cargoPct < needPct)
+		{
+			this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+		}
+	}
+
+	// --- Two-frame confirmation to avoid STOP races ---
+	const int now = Unsorted::CurrentFrame;
+	if (this->Harvester_AutoReturn_ConfirmFrame != (now - 1))
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = now; // first pass, arm confirmation
+		return;
+	}
+
+	// Confirmed on consecutive frames: issue deterministically
+	this->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
 	pUnit->QueueMission(Mission::Harvest, true);
 
-	const int cd = std::max(0, rules->Harvester_AutoReturn_IssueCooldownTicks.Get());
-	if (cd > 0) this->Harvester_AutoReturn_IssueCooldown.Start(cd);
+	// “just issued” stamp (protects manual-harvest clear hook)
+	this->Harvester_AutoReturn_LastIssueFrame = (int32_t)Unsorted::CurrentFrame;
+
+	// Back-off a bit after issuing to prevent thrash
+	if (const int cd = std::max(0, rules->Harvester_AutoReturn_IssueCooldownTicks.Get()); cd > 0)
+	{
+		this->Harvester_AutoReturn_IssueCooldown.Start(cd);
+	}
 }
 
 void TechnoExt::ExtData::EatPassengers()
@@ -1754,19 +1823,25 @@ void TechnoExt::ExtData::UpdateKeepTargetOnMove()
 
 	const int weaponIndex = pThis->SelectWeapon(pThis->Target);
 
-	if (auto const pWeapon = pThis->GetWeapon(weaponIndex)->WeaponType)
+	if (auto const pWS = pThis->GetWeapon(weaponIndex))
 	{
-		const int extraDistance = static_cast<int>(pTypeExt->KeepTargetOnMove_ExtraDistance.Get());
-		const int range = pWeapon->Range;
-		pWeapon->Range += extraDistance; // Temporarily adjust weapon range based on the extra distance.
-
-		if (!pThis->IsCloseEnough(pThis->Target, weaponIndex))
+		if (auto const pWeapon = pWS->WeaponType)
 		{
-			pThis->SetTarget(nullptr);
-			this->KeepTargetOnMove = false;
+			const int extra = (int)pTypeExt->KeepTargetOnMove_ExtraDistance.Get();
+			// First: the engine’s precise check
+			bool inRange = pThis->IsCloseEnough(pThis->Target, weaponIndex);
+			if (!inRange)
+			{
+				// Second-chance: a simple distance band without mutating global WeaponType
+				const int dist = pThis->DistanceFrom(pThis->Target);
+				const int range = pWeapon->Range + std::max(0, extra);
+				if (dist > range)
+				{
+					pThis->SetTarget(nullptr);
+					this->KeepTargetOnMove = false;
+				}
+			}
 		}
-
-		pWeapon->Range = range;
 	}
 }
 

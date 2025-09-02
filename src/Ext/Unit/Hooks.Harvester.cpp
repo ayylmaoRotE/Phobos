@@ -3,6 +3,8 @@
 
 #include <Ext/Techno/Body.h>
 #include <Ext/TechnoType/Body.h>
+#include <LocomotionClass.h>        // defines locomotion_cast and CLSIDs
+#include <JumpjetLocomotionClass.h> // defines JumpjetLocomotionClass + ILocoVTable
 
 #pragma region EnterRefineryFix
 
@@ -12,16 +14,25 @@ DEFINE_HOOK(0x74312A, UnitClass_SetDestination_ReplaceWithHarvestMission, 0x5)
 
 	GET(UnitClass*, pThis, EBP);
 
-	// Jumpjet will overlap when entering buildings,
-	// which can cause errors in the connection between jumpjet harvester and refinery building,
-	// leading to game crashes in drawing
-	// Here change the Mission::Enter to Mission::Harvest
+	// Only for jumpjet harvesters / weeders. Otherwise, run the original code path.
+	const auto t = pThis->Type;
+	if (!(t && (t->Harvester || t->Weeder)))
+	{
+		return 0; // not a miner
+	}
+
+	// Check locomotion is jumpjet. If not jumpjet, do not alter.
+	const auto pJJ = pThis->Locomotor ? locomotion_cast<JumpjetLocomotionClass*>(pThis->Locomotor) : nullptr;
+	if (!pJJ)
+	{
+		return 0; // not jumpjet
+	}
+
+	// Now safe to replace Enter with Harvest for jumpjet miners only.
 	pThis->QueueMission(Mission::Harvest, false);
 	pThis->NextMission();
-	pThis->MissionStatus = 2; // Status: returning to refinery
+	pThis->MissionStatus = 2;  // returning to refinery
 	pThis->IsHarvesting = false;
-	// Note: jumpjet harvester should not be allowed to comply with this behavior alone, otherwise
-	// it may still overlap with other types and crash
 
 	return SkipGameCode;
 }
@@ -33,15 +44,31 @@ DEFINE_HOOK(0x73E739, UnitClass_Mission_Harvest_SkipUselessArchiveTarget, 0x5)
 	GET(UnitClass*, pThis, EBP);
 	GET(AbstractClass*, pFocus, EAX); // pThis->ArchiveTarget
 
-	// Removing unnecessary set destination
-	// This can effectively reduce the ineffective actions when Harvester automatically returning
-	// to work after be manually operated to return to Refinery.
+	// IMPORTANT: do NOT optimize while STOP is in play for miners
+	if (pThis)
+	{
+		const auto t = pThis->Type;
+		const bool isMiner = t && (t->Harvester || t->Weeder);
+		if (isMiner)
+		{
+			if (auto* ext = TechnoExt::ExtMap.Find(pThis))
+			{
+				if (ext->Harv_HasPendingStop()
+				 || ext->Harvester_AutoReturn_IsSuppressed()
+				 || ext->Harv_IsSuppressed())
+				{
+					return 0; // run original game code; don't clear/skip
+				}
+			}
+		}
+	}
+
+	// Original optimization
 	if (pFocus->WhatAmI() != AbstractType::Building || pThis->GetCell()->GetBuilding() != pFocus)
 		return 0;
 
-	// Clear ArchiveTarget to avoid checking again next time
+	// Clear ArchiveTarget to avoid checking again next time, then skip original code
 	pThis->ArchiveTarget = nullptr;
-
 	return SkipGameCode;
 }
 
