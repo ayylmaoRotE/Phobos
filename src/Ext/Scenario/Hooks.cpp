@@ -33,7 +33,7 @@ DEFINE_HOOK(0x6870D7, ReadScenario_MissionINI, 0x5)
 	pINI->ReadString(scenarioName, "LS800BkgdName", pScenarioExt->DefaultLS800BkgdName, pScenario->LS800BkgdName, 64);
 	pINI->ReadString(scenarioName, "LS800BkgdPal", pScenarioExt->DefaultLS800BkgdPal, pScenario->LS800BkgdPal, 64);
 
-	Contracts::LoadScenarioOverrides(pINI);
+
 
 	return SkipGameCode;
 }

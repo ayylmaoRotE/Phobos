@@ -174,24 +174,6 @@ void Manager::EnsureSeeds()
 	NormalizeDefinitions();
 }
 
-void Manager::CaptureMatchSeedIfDue(int64_t anchorFrame)
-{
-	if (MatchSeedCaptured) return;
-
-	const int64_t now = Unsorted::CurrentFrame;
-	if (now < anchorFrame) return;
-
-	if (auto* sc = ScenarioClass::Instance)
-	{
-		MatchSeed = sc->Random.Random();   // lockstep draw IF every peer calls at/after same sim frame
-	}
-	else
-	{
-		MatchSeed = 0; // deterministic fallback
-	}
-	MatchSeedCaptured = true;
-}
-
 // ---------- narrow<->wide helpers (ASCII-safe, fast, deterministic) ----------
 static inline std::wstring ToWideASCII(const char* s);
 static inline std::string  WideToNarrowASCII(const std::wstring& w);
@@ -605,6 +587,48 @@ void Manager::parseContracts(CCINIClass* ini)
 	}
 }
 
+void Manager::CaptureMatchSeedIfDue()
+{
+	if (MatchSeedCaptured) return;
+
+	uint32_t s = 0;
+
+	// Preferred: a stable per-match seed from the session/scenario.
+	if (auto* sc = ScenarioClass::Instance)
+	{
+		// Uncomment the first line that compiles in your fork.
+		// s = sc->RandomSeed;             // many forks have this
+		// s = sc->MapSeed;                // some Ares/Phobos forks expose this
+		// s = sc->Random.Seed;            // or a Seed/Peek() on Random
+		// s = sc->Random.Peek();          // if there is a non-advancing peek
+
+		// Robust fallback if none of the above exist:
+		// Derive a seed from deterministic, network-identical data (no frame timing).
+		uint32_t h = 0x13572468u;
+		if (sc->ININame) { h = HashStr32(h, sc->ININame); }
+		if (sc->ScenarioName) { h = HashStr32(h, sc->ScenarioName); }
+		if (auto* rules = RulesClass::Instance)
+		{
+			if (rules->BuildName) { h = HashStr32(h, rules->BuildName); }
+		}
+		// Mix in player slots/countries deterministically
+		for (int i = 0; i < HouseClass::Array.Count; ++i)
+		{
+			if (auto* hh = HouseClass::Array.Items[i])
+			{
+				// Exclude observers/special/neutral from the seed so specs don’t change it
+				if (!IsCompetitiveHouse(hh)) continue;
+				int slot = hh->GetSpawnPosition(); // -1 if N/A
+				h = Hash32(h ^ (uint32_t)((i & 0xFF) | ((slot & 0xFF) << 8)));
+			}
+		}
+		s = h;
+	}
+
+	MatchSeed = s;
+	MatchSeedCaptured = true;
+}
+
 void Manager::ensureHeaderMessageList()
 {
 	if (HeaderML) return;
@@ -882,6 +906,8 @@ static bool IsCompetitiveHouse(HouseClass* h)
 		if (_stricmp(id, "Neutral") == 0) return false;
 		if (_stricmp(id, "Special") == 0) return false;
 		if (_stricmp(id, "Civilian") == 0) return false; // optional, if you don’t want civ-side shown
+		if (_stricmp(id, "Observer") == 0)  return false;
+		if (_stricmp(id, "Spectator") == 0)  return false;
 	}
 
 	return true;

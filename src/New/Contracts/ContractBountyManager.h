@@ -79,7 +79,7 @@ namespace Contracts
 		uint32_t ActiveContractID = 0;   // ID of the currently active contract
 		uint32_t MatchSeed = 0;
 		bool     MatchSeedCaptured = false;
-		void CaptureMatchSeedIfDue(int64_t anchorFrame);
+		void CaptureMatchSeedIfDue();
 
 
 		// Deterministic start/sync from a shared anchor (handles late defs gracefully).

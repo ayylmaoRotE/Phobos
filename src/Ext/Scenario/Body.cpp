@@ -1,5 +1,6 @@
 #include "Body.h"
 #include <New/Contracts/ContractEvents.h>
+#include <New/Contracts/ContractBountyManager.h>
 #include <SessionClass.h>
 #include <VeinholeMonsterClass.h>
 

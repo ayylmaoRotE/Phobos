@@ -13,17 +13,15 @@ namespace Contracts
 	void DrawAndTick()
 	{
 		auto& M = Manager::Instance();
-
-		// Early shared anchor; 1s reduces catch-up work
 		constexpr int kSyncStartFrame = 15 * 1;
 
-		// 1) Capture per-match RNG at/after the anchor (defs not required)
+		// 1) capture match seed at/after shared frame
 		M.CaptureMatchSeedIfDue(kSyncStartFrame);
 
-		// 2) Normalize defs if available (cheap)
+		// 2) normalize defs if they exist
 		M.EnsureSeeds();
 
-		// 3) As soon as defs exist AND seed is captured, deterministically sync to the current epoch
+		// 3) once defs+seed exist, sync to current epoch from shared anchor
 		if (!M.HasStarted() && M.HasDefinitions() && M.MatchSeedCaptured)
 		{
 			M.StartOrSyncFromAnchor(kSyncStartFrame);
