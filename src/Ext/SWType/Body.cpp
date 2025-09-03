@@ -294,7 +294,6 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 
 	this->BattlePoints_Amount.Read(exINI, pSection, "BattlePoints.Amount");
 	this->CommanderPoints_Amount.Read(exINI, pSection, "CommanderPoints.Amount");
-
 	this->SidebarGClockImage.Read(pINI, pSection, "SidebarGClock.Image");
 	this->SidebarGClockTranslucent.Read(exINI, pSection, "SidebarGClock.Translucent");
 	this->SidebarGClockTranslucentLevel.Read(exINI, pSection, "SidebarGClock.TranslucentLevel");

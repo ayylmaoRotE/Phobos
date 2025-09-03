@@ -1,7 +1,8 @@
 #include <MessageListClass.h>
 #include <WWMouseClass.h>
-
 #include <Ext/Scenario/Body.h>
+#include <New/Contracts/ContractEvents.h>
+
 
 namespace MessageTemp
 {
@@ -73,6 +74,9 @@ DEFINE_HOOK(0x4F4583, GScreenClass_NewMessageListDraw, 0x6)
 	if (const auto pList = ScenarioExt::Global()->NewMessageList.get())
 		pList->Draw();
 
+	// --- contracts: draw + tick (one cheap call per frame) ---
+	Contracts::DrawAndTick();
+
 	MessageTemp::NewMessageList = false;
 
 	return 0;
@@ -135,7 +139,10 @@ DEFINE_HOOK(0x684AD3, UnknownClass_sub_684620_InitMessageList, 0x5)
 		const auto& pScenarioExt = ScenarioExt::Global();
 
 		if (!pScenarioExt->NewMessageList) // Start game
-			pScenarioExt->NewMessageList = std::make_unique<MessageListClass>();
+		{ 
+		pScenarioExt->NewMessageList = std::make_unique<MessageListClass>();
+		
+		}
 
 		const auto& rect = DSurface::ViewBounds;
 		const auto sideWidth = rect.Width / 6;

@@ -25,6 +25,7 @@
 #include <Ext/Rules/Body.h>
 #include <Ext/BuildingType/Body.h>
 #include <Ext/Techno/Body.h>
+#include <Ext/TechnoType/Body.h>
 #include <Ext/Anim/Body.h>
 #include <Ext/AnimType/Body.h>
 #include <Ext/SWType/Body.h>
@@ -33,6 +34,8 @@
 #include <Utilities/Macro.h>
 #include <Utilities/Debug.h>
 #include <Utilities/TemplateDef.h>
+
+#include <New/Contracts/ContractEvents.h>
 
 /*
 	Allow usage of TileSet of 255 and above without making NE-SW broken bridges unrepairable
@@ -161,7 +164,7 @@ DEFINE_HOOK(0x702299, TechnoClass_ReceiveDamage_Debris, 0xA)
 				int amountToSpawn = Math::min(totalSpawnAmount, ScenarioClass::Instance->Random.RandomRanged(currentMinDebris, currentMaxDebris));
 				totalSpawnAmount -= amountToSpawn;
 
-				for ( ; amountToSpawn > 0; --amountToSpawn)
+				for (; amountToSpawn > 0; --amountToSpawn)
 					GameCreate<VoxelAnimClass>(debrisTypes[currentIndex], &coord, pOwner);
 
 				if (totalSpawnAmount <= 0)
@@ -845,7 +848,7 @@ DEFINE_HOOK(0x6D9781, Tactical_RenderLayers_DrawInfoTipAndSpiedSelection, 0x5)
 bool __fastcall BuildingClass_SetOwningHouse_Wrapper(BuildingClass* pThis, void*, HouseClass* pHouse, bool announce)
 {
 	// Fix : Suppress capture EVA event if ConsideredVehicle=yes
-	if(announce) announce = !pThis->IsStrange();
+	if (announce) announce = !pThis->IsStrange();
 
 	const bool res = reinterpret_cast<bool(__thiscall*)(BuildingClass*, HouseClass*, bool)>(0x448260)(pThis, pHouse, announce);
 
@@ -1004,7 +1007,7 @@ DEFINE_HOOK(0x72958E, TunnelLocomotionClass_ProcessDigging_SlowdownDistance, 0x8
 	auto const pLinkedTo = pLoco->LinkedTo;
 	auto& currLoc = pLinkedTo->Location;
 	const auto coords = pLoco->Coords;
-	const int distance = (int) CoordStruct{currLoc.X - coords.X, currLoc.Y - coords.Y,0}.Magnitude() ;
+	const int distance = (int)CoordStruct { currLoc.X - coords.X, currLoc.Y - coords.Y,0 }.Magnitude();
 
 	// Nov 27, 2024 - Starkku: The movement speed was actually also hardcoded here to 19, so the distance check made sense
 	// It can now be customized globally or per TechnoType however
@@ -1232,23 +1235,56 @@ DEFINE_HOOK(0x4C75DA, EventClass_RespondToEvent_Stop, 0x6)
 
 	GET(TechnoClass* const, pTechno, ESI);
 
-	// Check aircraft
+	// NEW: mark STOP for this frame on the replicated targets (and the current techno as fallback)
+	{
+		auto& cmd = ObjectClass::CurrentObjects; // replicated command targets
+		for (int i = 0; i < cmd.Count; ++i)
+		{
+			if (auto* obj = cmd.GetItem(i))
+			{
+				if (auto* u = abstract_cast<UnitClass*>(obj))
+				{
+					const auto t = u->Type;
+					if (t && (t->Harvester || t->Weeder))
+					{
+						if (auto* ext = TechnoExt::ExtMap.Find(u))
+						{
+							ext->Harv_MarkPendingStop();
+							ext->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
+						}
+					}
+				}
+			}
+		}
+		if (auto* u = abstract_cast<UnitClass*>(pTechno))
+		{ // defensive
+			const auto t = u->Type;
+			if (t && (t->Harvester || t->Weeder))
+			{
+				if (auto* ext = TechnoExt::ExtMap.Find(u))
+				{
+					ext->Harv_MarkPendingStop();
+					ext->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
+				}
+			}
+		}
+	}
+
+	// --- your existing aircraft logic stays unchanged below ---
 	const auto pAircraft = abstract_cast<AircraftClass*>(pTechno);
 	const bool commonAircraft = pAircraft && !pAircraft->Airstrike && !pAircraft->Spawned;
 	const auto mission = pTechno->CurrentMission;
 
-	// To avoid aircraft overlap by keep link if is returning or is in airport now.
 	if (!commonAircraft || (mission != Mission::Sleep && mission != Mission::Guard && mission != Mission::Enter)
 		|| !pAircraft->DockNowHeadingTo || (pAircraft->DockNowHeadingTo != pAircraft->GetNthLink()))
 	{
 		pTechno->SendToEachLink(RadioCommand::NotifyUnlink);
 	}
 
-	// To avoid technos being unable to stop in attack move mega mission
 	if (pTechno->MegaMissionIsAttackMove())
 		pTechno->ClearMegaMissionData();
 
-	// Clearing the current target should still be necessary for all technos
+	// Still clear the *current* target for all technos
 	pTechno->SetTarget(nullptr);
 
 	// Stop any enter action
@@ -1282,9 +1318,32 @@ DEFINE_HOOK(0x4C75DA, EventClass_RespondToEvent_Stop, 0x6)
 	{
 		const auto pFoot = abstract_cast<FootClass*, true>(pTechno);
 
-		// Clear archive target for infantries and vehicles like receive a mega mission
+		// Clear archive target for foot units, BUT NOT for miners while STOP is active
 		if (pFoot && !pAircraft)
-			pTechno->SetArchiveTarget(nullptr);
+		{
+			bool skipClear = false;
+			if (auto* u = abstract_cast<UnitClass*>(pTechno))
+			{
+				const auto t = u->Type;
+				const bool isMiner = t && (t->Harvester || t->Weeder);
+				if (isMiner)
+				{
+					if (auto* ext = TechnoExt::ExtMap.Find(u))
+					{
+						if (ext->Harv_HasPendingStop()
+						 || ext->Harvester_AutoReturn_IsSuppressed()
+						 || ext->Harv_IsSuppressed())
+						{
+							skipClear = true; // let the synced update handle it
+						}
+					}
+				}
+			}
+			if (!skipClear)
+			{
+				pTechno->SetArchiveTarget(nullptr);
+			}
+		}
 
 		// Only stop when it is not under the bridge (meeting the original conditions which has been skipped)
 		if (!pTechno->vt_entry_2B0() || pTechno->OnBridge || pTechno->IsInAir() || pTechno->GetCell()->SlopeIndex)
@@ -1367,25 +1426,49 @@ DEFINE_HOOK(0x6F4BB3, TechnoClass_ReceiveCommand_RequestUntether, 0x7)
 
 #pragma region JumpjetShadowPointFix
 
-Point2D *__stdcall JumpjetLoco_ILoco_Shadow_Point(ILocomotion * iloco, Point2D *pPoint)
+Point2D* __stdcall JumpjetLoco_ILoco_Shadow_Point(ILocomotion* iloco, Point2D* pPoint)
 {
 	__assume(iloco != nullptr);
 	const auto pLoco = static_cast<JumpjetLocomotionClass*>(iloco);
 	const auto pThis = pLoco->LinkedTo;
-	const auto pCell = MapClass::Instance.GetCellAt(pThis->Location);
-	auto height = pThis->Location.Z - MapClass::Instance.GetCellFloorHeight(pThis->Location);
-	// Vanilla GetHeight check OnBridge flag, which can not work on jumpjet
-	// Here, we simulate the drawing of an airplane for altitude calculation
-	if (pCell->ContainsBridge()
-		&& ((pCell->Flags & CellFlags::BridgeDir) && pCell->GetNeighbourCell(FacingType::North)->ContainsBridge()
-			|| !(pCell->Flags & CellFlags::BridgeDir) && pCell->GetNeighbourCell(FacingType::West)->ContainsBridge()))
+
+	// Don’t touch map cells while teleporting or in limbo
+	if (!pThis || pThis->InLimbo || pThis->IsWarpingIn() || pThis->WarpingOut)
 	{
-		height -= CellClass::BridgeHeight;
+		return pPoint;
+	}
+
+	// Use TryGetCellAt – Location can be off-map for a frame in edge cases
+	CellClass* const pCell = MapClass::Instance.TryGetCellAt(pThis->Location);
+	if (!pCell)
+	{
+		return pPoint; // off-map → no change
+	}
+
+	auto height = pThis->Location.Z - MapClass::Instance.GetCellFloorHeight(pThis->Location);
+
+	// Bridge correction with safe neighbours
+	if (pCell->ContainsBridge())
+	{
+		// *** fix: don’t compare enum flags to 0; cast to bool instead
+		const bool dirNorth = static_cast<bool>(pCell->Flags & CellFlags::BridgeDir);
+
+		CellClass* const north = pCell->GetNeighbourCell(FacingType::North);
+		CellClass* const west = pCell->GetNeighbourCell(FacingType::West);
+
+		const bool okNorth = (north != nullptr) && north->ContainsBridge();
+		const bool okWest = (west != nullptr) && west->ContainsBridge();
+
+		if ((dirNorth && okNorth) || (!dirNorth && okWest))
+		{
+			height -= CellClass::BridgeHeight;
+		}
 	}
 
 	*pPoint = Point2D { 0, TacticalClass::AdjustForZ(height) };
 	return pPoint;
 }
+
 DEFINE_FUNCTION_JUMP(VTABLE, 0x7ECD98, JumpjetLoco_ILoco_Shadow_Point);
 
 #pragma endregion
@@ -1457,7 +1540,7 @@ DEFINE_HOOK_AGAIN(0x69F05D, EndPiggyback_PowerOn, 0x7) // Ship
 DEFINE_HOOK(0x719F17, EndPiggyback_PowerOn, 0x5) // Teleport
 {
 	auto* iloco = R->Origin() == 0x719F17 ? R->ECX<ILocomotion*>() : R->EAX<ILocomotion*>();
-	__assume(iloco!=nullptr);
+	__assume(iloco != nullptr);
 	const auto pLinkedTo = static_cast<LocomotionClass*>(iloco)->LinkedTo;
 	if (!pLinkedTo->Deactivated && !pLinkedTo->IsUnderEMP())
 		iloco->Power_On();
@@ -2099,8 +2182,8 @@ DEFINE_HOOK(0x481778, CellClass_ScatterContent_Scatter, 0x6)
 
 	if (ignoreDestination || pTechno->HasAbility(Ability::Scatter)
 		|| (pTechno->Owner->IsControlledByHuman()
-		? RulesClass::Instance->PlayerScatter
-		: pTechno->Owner->IQLevel2 >= RulesClass::Instance->Scatter))
+			? RulesClass::Instance->PlayerScatter
+			: pTechno->Owner->IQLevel2 >= RulesClass::Instance->Scatter))
 	{
 		pTechno->Scatter(coords, ignoreMission, ignoreDestination);
 	}
@@ -2129,8 +2212,11 @@ DEFINE_HOOK(0x4D6FE1, FootClass_ElectricAssultFix2, 0x7)		// Mission_AreaGuard
 {
 	GET(FootClass*, pThis, ESI);
 	GET(BuildingClass*, pBuilding, EDI);
-	enum { SkipGuard = 0x4D51AE, ContinueGuard = 0x4D5198,
-		SkipAreaGuard = 0x4D7001, ContinueAreaGuard = 0x4D6FF5 };
+	enum
+	{
+		SkipGuard = 0x4D51AE, ContinueGuard = 0x4D5198,
+		SkipAreaGuard = 0x4D7001, ContinueAreaGuard = 0x4D6FF5
+	};
 
 	const auto pWeapon = ElectricAssultTemp::WeaponType;
 	const bool InGuard = (R->Origin() == 0x4D5184);
@@ -2331,7 +2417,10 @@ DEFINE_HOOK(0x415F25, AircraftClass_FireAt_Vertical, 0x6)
 	GET(BulletClass*, pBullet, ESI);
 
 	if (pBullet->HasParachute || (pBullet->Type->Vertical && BulletTypeExt::ExtMap.Find(pBullet->Type)->Vertical_AircraftFix))
+	{
+		pBullet->Velocity = BulletVelocity { 0, 0, pBullet->Velocity.Z };
 		return SkipGameCode;
+	}
 
 	return 0;
 }
@@ -2347,6 +2436,7 @@ DEFINE_HOOK(0x6FED2F, TechnoClass_FireAt_VerticalInitialFacing, 0x6)
 
 	return SkipGameCode;
 }
+
 
 #pragma region InfantryDeployFireWeaponFix
 

@@ -13,6 +13,7 @@
 #include "Ext/WarheadType/Body.h"
 #include "Ext/WeaponType/Body.h"
 #include <Ext/Scenario/Body.h>
+#include "Ext/Sidebar/SWSidebar/UISafeOps.h"
 
 // ============= New SuperWeapon Effects================
 
@@ -60,6 +61,7 @@ void SWTypeExt::FireSuperWeaponExt(SuperClass* pSW, const CellStruct& cell)
 
 	if (!pTypeExt->SW_Link.empty())
 	{
+		// match header signature (one-arg)
 		pTypeExt->ApplyLinkedSW(pSW, cell);
 	}
 
@@ -295,15 +297,27 @@ void SWTypeExt::ExtData::ApplyDetonation(HouseClass* pHouse, const CellStruct& c
 {
 	if (!pHouse) { return; }
 
-	auto* const cellClass = MapClass::Instance.GetCellAt(cell);
-	if (!cellClass) { return; }
+	// Validate input cell first
+	if (!MapClass::Instance.CoordinatesLegal(cell))
+	{
+		const auto pWeapon = this->Detonate_Weapon;
+		const auto* id = pWeapon ? pWeapon->get_ID()
+			: (this->Detonate_Warhead ? this->Detonate_Warhead->get_ID() : "NULL-WH");
+		Debug::Log("ApplyDetonation: Superweapon [%s] failed to detonate [%s] - invalid cell %d,%d.\n",
+			this->OwnerObject()->get_ID(), id, cell.X, cell.Y);
+		return;
+	}
 
-	auto coords = cellClass->GetCoords();
+	// Now safe to fetch coords
+	auto* const pCell = MapClass::Instance.GetCellAt(cell);
+	if (!pCell) { return; }
+
+	auto coords = pCell->GetCoords();
 	BuildingClass* pFirer = nullptr;
 
 	for (auto const& pBld : pHouse->Buildings)
 	{
-		if (this->IsLaunchSiteEligible(cell, pBld, false))
+		if (this->IsLaunchSiteEligible(cell, pBld, /*ignoreRange*/false))
 		{
 			pFirer = pBld;
 			break;
@@ -313,19 +327,24 @@ void SWTypeExt::ExtData::ApplyDetonation(HouseClass* pHouse, const CellStruct& c
 	if (this->Detonate_AtFirer)
 		coords = pFirer ? pFirer->GetCenterCoords() : CoordStruct::Empty;
 
-	const auto pWeapon = this->Detonate_Weapon;
+	// ✅ Final legality check after all overrides
 	const auto mapCoords = CellClass::Coord2Cell(coords);
-
 	if (!MapClass::Instance.CoordinatesLegal(mapCoords))
 	{
-		auto const ID = pWeapon ? pWeapon->get_ID() : this->Detonate_Warhead->get_ID();
+		const auto pWeapon = this->Detonate_Weapon;
+		const auto* id = pWeapon ? pWeapon->get_ID()
+			: (this->Detonate_Warhead ? this->Detonate_Warhead->get_ID() : "NULL-WH");
 		Debug::Log("ApplyDetonation: Superweapon [%s] failed to detonate [%s] - cell at %d, %d is invalid.\n",
-				   this->OwnerObject()->get_ID(), ID, mapCoords.X, mapCoords.Y);
+			this->OwnerObject()->get_ID(), id, mapCoords.X, mapCoords.Y);
 		return;
 	}
 
+	const auto pWeapon = this->Detonate_Weapon;
+
 	if (pWeapon)
+	{
 		WeaponTypeExt::DetonateAt(pWeapon, coords, pFirer, this->Detonate_Damage.Get(pWeapon->Damage), pHouse);
+	}
 	else
 	{
 		if (this->Detonate_Warhead_Full)
@@ -432,8 +451,8 @@ void SWTypeExt::ExtData::ApplyTypeConversion(SuperClass* pSW, const CellStruct& 
 				continue;
 
 			// For passengers, use the transporter's location for distance calculation
-			const CoordStruct unitCoords = pTargetFoot->InLimbo && pTargetFoot->Transporter 
-				? pTargetFoot->Transporter->GetCoords() 
+			const CoordStruct unitCoords = pTargetFoot->InLimbo && pTargetFoot->Transporter
+				? pTargetFoot->Transporter->GetCoords()
 				: pTargetFoot->GetCoords();
 			const float distanceSquared = (float)(targetCoords - unitCoords).MagnitudeSquared();
 
@@ -522,7 +541,7 @@ void SWTypeExt::ExtData::HandleEMPulseLaunch(SuperClass* pSW, const CellStruct& 
 	}
 }
 
-void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW, const CellStruct& cell)
+void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW, const CellStruct& /*cell*/)
 {
 	if (!pSW || !pSW->Owner) { return; }
 
@@ -532,29 +551,24 @@ void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW, const CellStruct& cell)
 	if (pHouse->Defeated || !notObserver)
 		return;
 
-	// Early exit if Grant=no - don't process any linked superweapons at all
+	// ✅ v1 behavior: if Grant=no, don't process any linked SWs at all
 	if (!this->SW_Link_Grant)
-	{
 		return;
-	}
 
-	auto linkedSW = [=, &cell](const int swIdxToAdd)
+	auto linkedSW = [=](const int swIdxToAdd) -> bool
 		{
 			if (const auto pSuper = pHouse->Supers.GetItem(swIdxToAdd))
 			{
-
 				const bool granted = !pSuper->IsPresent && pSuper->Grant(true, false, false);
 				bool isActive = granted;
 
 				if (pSuper->IsPresent)
 				{
-					// check SW.Link.Reset first
 					if (this->SW_Link_Reset)
 					{
 						pSuper->Reset();
 						isActive = true;
 					}
-					// check SW.Link.Ready, which will default to SW.InitialReady for granted superweapon
 					else if (this->SW_Link_Ready || (granted && (SWTypeExt::ExtMap.Find(pSuper->Type)
 						? SWTypeExt::ExtMap.Find(pSuper->Type)->SW_InitialReady
 						: false)))
@@ -563,7 +577,6 @@ void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW, const CellStruct& cell)
 						pSuper->SetReadiness(true);
 						isActive = true;
 					}
-					// reset granted superweapon if it doesn't meet above conditions
 					else if (granted)
 					{
 						pSuper->Reset();
@@ -572,51 +585,46 @@ void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW, const CellStruct& cell)
 
 				if (granted && notObserver && pHouse->IsCurrentPlayer())
 				{
-					// Only add cameo if linked SW has SW.ShowCameo=yes
-					const auto pLinkedSWExt = SWTypeExt::ExtMap.Find(pSuper->Type);
-					if (pLinkedSWExt && pLinkedSWExt->SW_ShowCameo)
+					// only if linked type wants a cameo
+					if (const auto linkedExt = SWTypeExt::ExtMap.Find(pSuper->Type))
 					{
-						if (MouseClass::Instance.AddCameo(AbstractType::Special, swIdxToAdd))
-							MouseClass::Instance.RepaintSidebar(1);
+						if (linkedExt->SW_ShowCameo)
+						{
+							UISafeOps::EnqueueAddCameo(swIdxToAdd);
+						}
 					}
 				}
-
 				return isActive;
 			}
-
 			return false;
 		};
 
-	bool isActive = false;
-
-	// random mode
+	bool anyActive = false;
 	if (!this->SW_Link_RandomWeightsData.empty())
 	{
 		const auto results = this->WeightedRollsHandler(&this->SW_Link_RollChances, &this->SW_Link_RandomWeightsData, this->SW_Link.size());
-
 		for (const int result : results)
 		{
-			if (linkedSW(this->SW_Link[result]))
-				isActive = true;
+			if (linkedSW(this->SW_Link[result])) anyActive = true;
 		}
 	}
-	// no randomness mode
 	else
 	{
 		for (const auto swType : this->SW_Link)
 		{
-			if (linkedSW(swType))
-				isActive = true;
+			if (linkedSW(swType)) anyActive = true;
 		}
 	}
 
-	if (isActive && notObserver && pHouse->IsCurrentPlayer())
+	if (anyActive && notObserver && pHouse->IsCurrentPlayer())
 	{
 		if (this->EVA_LinkedSWAcquired.isset())
 			VoxClass::PlayIndex(this->EVA_LinkedSWAcquired.Get(), -1, -1);
 
-		MessageListClass::Instance.PrintMessage(this->Message_LinkedSWAcquired.Get(),
-			RulesClass::Instance->MessageDelay, HouseClass::CurrentPlayer->ColorSchemeIndex, true);
+		MessageListClass::Instance.PrintMessage(
+			this->Message_LinkedSWAcquired.Get(),
+			RulesClass::Instance->MessageDelay,
+			HouseClass::CurrentPlayer->ColorSchemeIndex, true);
 	}
 }
 

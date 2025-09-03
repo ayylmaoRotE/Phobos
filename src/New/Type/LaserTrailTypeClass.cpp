@@ -48,6 +48,10 @@ void LaserTrailTypeClass::LoadFromINI(CCINIClass* pINI)
 	this->CloakVisible.Read(exINI, section, "CloakVisible");
 	this->CloakVisible_DetectedOnly.Read(exINI, section, "CloakVisible.DetectedOnly");
 	this->DroppodOnly.Read(exINI, section, "DropPodOnly");
+
+	// cache derived value for runtime hotpath
+	const int seg = this->SegmentLength;
+	this->SegmentLengthSq = seg * seg;
 }
 
 template <typename T>
@@ -77,6 +81,10 @@ void LaserTrailTypeClass::Serialize(T& Stm)
 void LaserTrailTypeClass::LoadFromStream(PhobosStreamReader& Stm)
 {
 	this->Serialize(Stm);
+
+	//  also recompute after stream load
+	const int seg = this->SegmentLength;
+	this->SegmentLengthSq = seg * seg;
 }
 
 void LaserTrailTypeClass::SaveToStream(PhobosStreamWriter& Stm)

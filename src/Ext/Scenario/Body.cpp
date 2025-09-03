@@ -1,5 +1,6 @@
 #include "Body.h"
-
+#include <New/Contracts/ContractEvents.h>
+#include <New/Contracts/ContractBountyManager.h>
 #include <SessionClass.h>
 #include <VeinholeMonsterClass.h>
 
@@ -70,7 +71,7 @@ void ScenarioExt::ExtData::SaveVariablesToFile(bool isGlobal)
 	else
 		file.CreateFileA();
 
-	for (const auto& [_,varext] : Global()->Variables[isGlobal])
+	for (const auto& [_, varext] : Global()->Variables[isGlobal])
 		fINI.WriteInteger(ScenarioClass::Instance->FileName, varext.Name, varext.Value, false);
 
 	fINI.WriteCCFile(&file);
@@ -166,7 +167,7 @@ void ScenarioExt::ExtData::Serialize(T& Stm)
 		.Process(this->DefaultLS640BkgdName)
 		.Process(this->DefaultLS800BkgdName)
 		.Process(this->DefaultLS800BkgdPal)
-//		.Process(this->NewMessageList); // Should not S/L
+		//		.Process(this->NewMessageList); // Should not S/L
 		;
 }
 
@@ -255,6 +256,7 @@ DEFINE_HOOK(0x68AD2F, ScenarioClass_LoadFromINI, 0x5)
 	GET(CCINIClass*, pINI, EDI);
 
 	ScenarioExt::LoadFromINIFile(pItem, pINI);
+	Contracts::LoadScenarioOverrides(pINI);
 	return 0;
 }
 

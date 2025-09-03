@@ -1,7 +1,8 @@
 #include "Body.h"
 #include <unordered_map>
+#include <New/Contracts/ContractEvents.h>
 
-// 🔧 Optimized: Per-event snapshots (no interleaving races). We also reserve once (on first use)
+// Per-event snapshots (no interleaving races). We also reserve once (on first use)
 // to avoid mid-game rehashes that can stutter.
 namespace IncomeBefore
 {
@@ -47,7 +48,10 @@ DEFINE_HOOK(0x73E4D0, UnitClass_Mission_Unload_CheckBalanceAfter, 0xA)
 		{
 			pBldExt->AccumulatedIncome += delta;
 		}
+
+		Contracts::OnMoneyEarned(pHouse, delta);
 	}
+	
 	// else: missed 'before' (rare) → no-op to avoid double count (matches safe legacy behavior)
 	return 0;
 }
@@ -90,21 +94,21 @@ DEFINE_HOOK(0x522E4F, InfantryClass_SlaveGiveMoney_CheckBalanceAfter, 0x6)
 					pSlaveMiner->Location);
 			}
 		}
+		GET(HouseClass* const, pHouse, EBX);
+		Contracts::OnMoneyEarned(pHouse, money);
 	}
-
 	return 0;
 }
 
+// cosmetic anim toggles remain unchanged
 DEFINE_HOOK(0x445FE4, BuildingClass_Place_RefineryActiveAnim, 0x6)
 {
 	GET(BuildingTypeClass*, pType, ESI);
-
 	return BuildingTypeExt::ExtMap.Find(pType)->Refinery_UseNormalActiveAnim ? 0x446183 : 0;
 }
 
 DEFINE_HOOK(0x450DAA, BuildingClass_UpdateAnimations_RefineryActiveAnim, 0x6)
 {
 	GET(BuildingTypeClass*, pType, EDX);
-
 	return BuildingTypeExt::ExtMap.Find(pType)->Refinery_UseNormalActiveAnim ? 0x450F9E : 0;
 }

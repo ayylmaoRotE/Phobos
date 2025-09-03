@@ -468,7 +468,13 @@ void TechnoExt::ProcessDigitalDisplays(TechnoClass* pThis)
 
 	for (DigitalDisplayTypeClass*& pDisplayType : *pDisplayTypes)
 	{
-		if (!pDisplayType->CanShow(pThis))
+		if (HouseClass::IsCurrentPlayerObserver() && !pDisplayType->VisibleToHouses_Observer)
+			continue;
+
+		if (!HouseClass::IsCurrentPlayerObserver() && !EnumFunctions::CanTargetHouse(pDisplayType->VisibleToHouses, pThis->Owner, HouseClass::CurrentPlayer))
+			continue;
+
+		if (!pDisplayType->VisibleInSpecialState && (pThis->TemporalTargetingMe || pThis->IsIronCurtained()))
 			continue;
 
 		int value = -1;

@@ -450,8 +450,8 @@ public:
 
 		Nullable<bool> InfantryAutoDeploy;
 
+		bool Harvester_AutoReturn_GlobalEligible;
 		Nullable<bool> TurretResponse;
-
 		GiftBoxData MyGiftBoxData;
 
 		ExtData(TechnoTypeClass* OwnerObject) : Extension<TechnoTypeClass>(OwnerObject)
@@ -845,7 +845,9 @@ public:
 
 			, InfantryAutoDeploy {}
 
+			, Harvester_AutoReturn_GlobalEligible { false }
 			, TurretResponse {}
+
 		{ }
 
 		void FireExtraWeapons(TechnoClass* pThis, AbstractClass* pTarget, int weaponIndex) const;

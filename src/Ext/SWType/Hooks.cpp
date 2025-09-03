@@ -475,6 +475,7 @@ DEFINE_HOOK(0x6CB920, SuperClass_ClickFire, 0x6)
 {
 	GET(SuperClass*, pSuper, ECX);
 	GET_STACK(CellStruct*, pCell, 0x4);
+	
 
 	if (!pSuper || !pSuper->Type) { return 0; }
 

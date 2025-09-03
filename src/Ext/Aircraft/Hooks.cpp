@@ -1,7 +1,9 @@
+// Hybrid_Aircraft_Missions.cpp
+#include "Body.h"
+
 #include <AircraftClass.h>
 #include <EventClass.h>
 #include <FlyLocomotionClass.h>
-#include <unordered_map>
 
 #include <Ext/Aircraft/Body.h>
 #include <Ext/Techno/Body.h>
@@ -10,349 +12,268 @@
 #include <Ext/BulletType/Body.h>
 #include <Utilities/Macro.h>
 
-// 🔫 Optimized weapon delay calculation with caching to avoid repeated SelectWeapon calls
+// ===== Delay computation (hybrid): cached weapon idx + safe guards + end-of-strafe handling
 static __forceinline int GetDelay_Fast(AircraftClass* pThis, bool isLastShot)
 {
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
-	
-	// Cache weapon index to avoid repeated SelectWeapon calls
+	auto const pType = pThis->Type;
+
+	// resolve & cache weapon index
 	int weaponIndex = pExt->CurrentAircraftWeaponIndex;
 	if (weaponIndex < 0)
 	{
 		weaponIndex = pThis->SelectWeapon(pThis->Target);
 		pExt->CurrentAircraftWeaponIndex = weaponIndex;
 	}
-	
-	auto const pWeapon = pThis->GetWeapon(weaponIndex);
-	if (!pWeapon) return 60; // safe fallback
-	
-	auto const pWeaponType = pWeapon->WeaponType;
-	if (!pWeaponType) return 60; // safe fallback
-	
-	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeaponType);
-	int delay = pWeaponType->ROF;
-	
-	if (isLastShot || pExt->Strafe_BombsDroppedThisRound == pWeaponExt->Strafing_Shots.Get(5) || (pWeaponExt->Strafing_UseAmmoPerShot && !pThis->Ammo))
-	{
-		// Critical: Set mission status to fly away and calculate proper end delay
-		pThis->MissionStatus = (int)AirAttackStatus::FlyToPosition;
-		delay = pWeaponExt->Strafing_EndDelay.Get((pWeaponType->Range + (Unsorted::LeptonsPerCell * 4)) / pThis->Type->Speed);
-	}
-	else
-	{
-		// Use burst delay for shots within the strafe run
-		delay = pWeaponExt->GetBurstDelay(pThis->CurrentBurstIndex);
-	}
-	
-	return delay;
-}
+	if (weaponIndex < 0 || !pType || weaponIndex >= pType->WeaponCount)
+		return 60; // safe fallback
 
+	auto const pWeapSlot = pThis->GetWeapon(weaponIndex);
+	if (!pWeapSlot) return 60;
+
+	auto const pWT = pWeapSlot->WeaponType;
+	if (!pWT) return 60;
+
+	auto const pWTExt = WeaponTypeExt::ExtMap.Find(pWT);
+
+	// end-of-strafe? (combine B's behavior with A's safety)
+	const int strafingShots = pWTExt->Strafing_Shots.Get(5);
+	const bool endPhase =
+		isLastShot
+		|| (pWTExt->Strafing_UseAmmoPerShot && !pThis->Ammo)
+		|| (TechnoExt::ExtMap.Find(pThis)->Strafe_BombsDroppedThisRound >= strafingShots);
+
+	if (endPhase)
+	{
+		// transition (deterministic)
+		pThis->MissionStatus = (int)AirAttackStatus::FlyToPosition;
+
+		// compute end delay with a sane default; guard division by zero
+		const int spd = std::max(1, pType->Speed);
+		const int defaultTicks = (pWT->Range + (Unsorted::LeptonsPerCell * 4)) / spd;
+		return pWTExt->Strafing_EndDelay.Get(defaultTicks);
+	}
+
+	// otherwise use per-burst delay (keeps vanilla-feel and A's intent)
+	return pWTExt->GetBurstDelay(pThis->CurrentBurstIndex);
+}
 
 #pragma region Mission_Attack
 
+// robust strafing-steps handler (bounds+null checks + cache)
 DEFINE_HOOK(0x417FF1, AircraftClass_Mission_Attack_StrafeShots, 0x6)
 {
 	GET(AircraftClass*, pThis, ESI);
+	if (!pThis) return 0;
 
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
-	AirAttackStatus const state = (AirAttackStatus)pThis->MissionStatus;
+	auto const pType = pThis->Type;
 
-	// Re-evaluate weapon choice due to potentially changing targeting conditions here
-	// only when aircraft is adjusting position or picking attack location.
-	// This choice is also re-evaluated again every time just before firing UNLESS mid strafing run.
-	// See AircraftClass_SelectWeapon_Wrapper and the call redirects below for this.
-	if (state > AirAttackStatus::ValidateAZ && state < AirAttackStatus::FireAtTarget)
-		pExt->CurrentAircraftWeaponIndex = Math::max(pThis->SelectWeapon(pThis->Target), 0);
-
-	if (state < AirAttackStatus::FireAtTarget2_Strafe
-		|| state > AirAttackStatus::FireAtTarget5_Strafe)
+	int weaponIndex = pExt->CurrentAircraftWeaponIndex;
+	if (weaponIndex < 0)
+	{
+		weaponIndex = pThis->SelectWeapon(pThis->Target);
+		pExt->CurrentAircraftWeaponIndex = weaponIndex;
+	}
+	if (weaponIndex < 0 || !pType || weaponIndex >= pType->WeaponCount)
 	{
 		pExt->Strafe_BombsDroppedThisRound = 0;
+		return 0;
 	}
 
-	// No need to evaluate this before any strafing shots have been fired.
-	if (pExt->Strafe_BombsDroppedThisRound)
+	auto const pWTSlot = pThis->GetWeapon(weaponIndex);
+	if (!pWTSlot || !pWTSlot->WeaponType)
 	{
-		auto pWeaponObj = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex);
-		if (!pWeaponObj) return 0;
-		auto const pWeapon = pWeaponObj->WeaponType;
-		auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
-		int const strafingShots = pWeaponExt->Strafing_Shots.Get(5);
-
-		if (strafingShots > 5)
-		{
-			if (state == AirAttackStatus::FireAtTarget3_Strafe)
-			{
-				int const remainingShots = strafingShots - 3 - pExt->Strafe_BombsDroppedThisRound;
-
-				if (remainingShots > 0)
-					pThis->MissionStatus = (int)AirAttackStatus::FireAtTarget2_Strafe;
-			}
-		}
+		pExt->Strafe_BombsDroppedThisRound = 0;
+		return 0;
 	}
 
+	auto const pWTExt = WeaponTypeExt::ExtMap.Find(pWTSlot->WeaponType);
+	auto const state = static_cast<AirAttackStatus>(pThis->MissionStatus);
+
+	// reset when not in strafing phases
+	if (state < AirAttackStatus::FireAtTarget2_Strafe || state > AirAttackStatus::FireAtTarget5_Strafe)
+	{
+		pExt->Strafe_BombsDroppedThisRound = 0;
+		return 0;
+	}
+
+	const int strafingShots = pWTExt->Strafing_Shots.Get(5);
+	if (strafingShots > 5 && state == AirAttackStatus::FireAtTarget3_Strafe)
+	{
+		const int remaining = strafingShots - 3 - pExt->Strafe_BombsDroppedThisRound;
+		if (remaining > 0)
+			pThis->MissionStatus = (int)AirAttackStatus::FireAtTarget2_Strafe;
+	}
 	return 0;
 }
 
-DEFINE_HOOK(0x4197FC, AircraftClass_GetFireLocation_WeaponRange, 0x6)
-{
-	enum { SkipGameCode = 0x419808 };
-
-	GET(AircraftClass*, pThis, EDI);
-
-	auto const pExt = TechnoExt::ExtMap.Find(pThis);
-	if (pExt->CurrentAircraftWeaponIndex < 0) {
-		R->EAX(0);
-	} else {
-		R->EAX(pThis->GetWeaponRange(pExt->CurrentAircraftWeaponIndex));
-	}
-
-	return SkipGameCode;
-}
-
-// If strafing weapon target is in air, consider the cell it is on as the firing position instead of the object itself if can fire at it.
+// Fire location for strafing vs air targets (safe early-outs)
 DEFINE_HOOK(0x4197F3, AircraftClass_GetFireLocation_Strafing, 0x5)
 {
 	GET(AircraftClass*, pThis, EDI);
 	GET(AbstractClass*, pTarget, EAX);
 
-	// pTarget can be nullptr
-	auto const pObject = abstract_cast<ObjectClass*>(pTarget);
-
-	if (!pObject || !pObject->IsInAir())
+	auto* const pObj = abstract_cast<ObjectClass*>(pTarget);
+	if (!pObj || !pObj->IsInAir())
+	{
 		return 0;
+	}
 
-	auto const fireError = pThis->GetFireError(pTarget, TechnoExt::ExtMap.Find(pThis)->CurrentAircraftWeaponIndex, false);
-
-	if (fireError == FireError::ILLEGAL || fireError == FireError::CANT)
+	int weaponIndex = TechnoExt::ExtMap.Find(pThis)->CurrentAircraftWeaponIndex;
+	if (weaponIndex < 0)
+	{
+		weaponIndex = pThis->SelectWeapon(pTarget);
+	}
+	if (weaponIndex < 0)
+	{
 		return 0;
+	}
 
-	R->EAX(MapClass::Instance.GetCellAt(pObject->GetCoords()));
+	const auto err = pThis->GetFireError(pTarget, weaponIndex, false);
+	if (err == FireError::ILLEGAL || err == FireError::CANT)
+	{
+		return 0;
+	}
 
+	// SAFETY: coords may be off-map in rare frames; tolerate nullptr
+	auto* const cell = MapClass::Instance.TryGetCellAt(pObj->GetCoords());
+	R->EAX(cell); // caller must accept null here (vanilla does)
 	return 0;
 }
 
+// Use cache when possible; write-back when selecting (perf-safe)
 long __stdcall AircraftClass_IFlyControl_IsStrafe(IFlyControl const* ifly)
 {
 	__assume(ifly != nullptr);
 
 	auto const pThis = static_cast<AircraftClass const*>(ifly);
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
-	WeaponTypeClass* pWeapon = nullptr;
+
+	WeaponTypeClass* pWT = nullptr;
 
 	if (pExt->CurrentAircraftWeaponIndex >= 0)
 	{
-		auto pWeaponObj = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex);
-		if (pWeaponObj)
-			pWeapon = pWeaponObj->WeaponType;
+		pWT = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex)->WeaponType;
 	}
 	else if (pThis->Target)
 	{
-		// 🔫 Optimized: Use cached weapon index instead of repeated SelectWeapon calls
-		int weaponIndex = pExt->CurrentAircraftWeaponIndex;
-		if (weaponIndex < 0)
-		{
-			weaponIndex = pThis->SelectWeapon(pThis->Target);
-			pExt->CurrentAircraftWeaponIndex = weaponIndex;
-		}
-		pWeapon = pThis->GetWeapon(weaponIndex)->WeaponType;
+		int idx = pThis->SelectWeapon(pThis->Target);
+		if (idx >= 0)
+			TechnoExt::ExtMap.Find(const_cast<AircraftClass*>(pThis))->CurrentAircraftWeaponIndex = idx; // write-back
+		pWT = (idx >= 0) ? pThis->GetWeapon(idx)->WeaponType : nullptr;
 	}
 	else if (pExt->LastWeaponType)
-		pWeapon = pExt->LastWeaponType;
-	else
-		pWeapon = pThis->GetWeapon(0)->WeaponType;
-
-	if (pWeapon)
 	{
-		auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
-		auto const pBulletType = pWeapon->Projectile;
-		return pWeaponExt->Strafing.Get(pBulletType->ROT <= 1 && !pBulletType->Inviso && !BulletTypeExt::ExtMap.Find(pBulletType)->TrajectoryType);
+		pWT = pExt->LastWeaponType;
+	}
+	else
+	{
+		pWT = pThis->GetWeapon(0)->WeaponType;
 	}
 
+	if (pWT)
+	{
+		auto const pWTExt = WeaponTypeExt::ExtMap.Find(pWT);
+		auto const pBT = pWT->Projectile;
+		return pWTExt->Strafing.Get(pBT->ROT <= 1 && !pBT->Inviso && !BulletTypeExt::ExtMap.Find(pBT)->TrajectoryType);
+	}
 	return false;
 }
-
 DEFINE_FUNCTION_JUMP(VTABLE, 0x7E2268, AircraftClass_IFlyControl_IsStrafe);
-
-DEFINE_HOOK(0x4180F4, AircraftClass_Mission_Attack_WeaponRange, 0x5)
-{
-	enum { SkipGameCode = 0x4180FF };
-
-	GET(AircraftClass*, pThis, ESI);
-
-	auto pExt = TechnoExt::ExtMap.Find(pThis);
-	if (pExt->CurrentAircraftWeaponIndex < 0) {
-		R->EAX<WeaponTypeClass*>(nullptr);
-	} else {
-		auto pWeaponObj = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex);
-		R->EAX<WeaponTypeClass*>(pWeaponObj ? pWeaponObj->WeaponType : nullptr);
-	}
-
-	return SkipGameCode;
-}
 
 DEFINE_HOOK(0x418403, AircraftClass_Mission_Attack_FireAtTarget_BurstFix, 0x8)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	pThis->ShouldLoseAmmo = true;
-
 	AircraftExt::FireWeapon(pThis, pThis->Target);
-
 	return 0x418478;
 }
-
 DEFINE_HOOK(0x4186B6, AircraftClass_Mission_Attack_FireAtTarget2_BurstFix, 0x8)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	AircraftExt::FireWeapon(pThis, pThis->Target);
-
 	return 0x4186D7;
 }
-
 DEFINE_HOOK(0x418805, AircraftClass_Mission_Attack_FireAtTarget2Strafe_BurstFix, 0x8)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	AircraftExt::FireWeapon(pThis, pThis->Target);
-
 	return 0x418826;
 }
-
 DEFINE_HOOK(0x418914, AircraftClass_Mission_Attack_FireAtTarget3Strafe_BurstFix, 0x8)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	AircraftExt::FireWeapon(pThis, pThis->Target);
-
 	return 0x418935;
 }
-
 DEFINE_HOOK(0x418A23, AircraftClass_Mission_Attack_FireAtTarget4Strafe_BurstFix, 0x8)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	AircraftExt::FireWeapon(pThis, pThis->Target);
-
 	return 0x418A44;
 }
-
 DEFINE_HOOK(0x418B1F, AircraftClass_Mission_Attack_FireAtTarget5Strafe_BurstFix, 0x8)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	AircraftExt::FireWeapon(pThis, pThis->Target);
-
 	return 0x418B40;
 }
 
-int __fastcall AircraftClass_SelectWeapon_Wrapper(AircraftClass* pThis, void* _, AbstractClass* pTarget)
-{
-	auto const pExt = TechnoExt::ExtMap.Find(pThis);
-
-	// Re-evaluate weapon selection only if not mid-strafing run before firing.
-	if (!pExt->Strafe_BombsDroppedThisRound)
-		pExt->CurrentAircraftWeaponIndex = Math::max(pThis->SelectWeapon(pTarget), 0);
-
-	return pExt->CurrentAircraftWeaponIndex;
-}
-
-DEFINE_FUNCTION_JUMP(CALL6, 0x41831E, AircraftClass_SelectWeapon_Wrapper);
-DEFINE_FUNCTION_JUMP(CALL6, 0x4185F5, AircraftClass_SelectWeapon_Wrapper);
-DEFINE_FUNCTION_JUMP(CALL6, 0x4187C4, AircraftClass_SelectWeapon_Wrapper);
-DEFINE_FUNCTION_JUMP(CALL6, 0x4188D3, AircraftClass_SelectWeapon_Wrapper);
-DEFINE_FUNCTION_JUMP(CALL6, 0x4189E2, AircraftClass_SelectWeapon_Wrapper);
-DEFINE_FUNCTION_JUMP(CALL6, 0x418AF1, AircraftClass_SelectWeapon_Wrapper);
-
 #pragma region After_Shot_Delays
-
-static int GetDelay(AircraftClass* pThis, bool isLastShot)
-{
-	// 🔫 Optimized: Use GetDelay_Fast for better performance with weapon caching
-	return GetDelay_Fast(pThis, isLastShot);
-}
 
 DEFINE_HOOK(0x4184CC, AircraftClass_Mission_Attack_Delay1A, 0x6)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	pThis->IsLocked = true;
 	pThis->MissionStatus = (int)AirAttackStatus::FireAtTarget2_Strafe;
-	R->EAX(GetDelay(pThis, false));
-
+	R->EAX(GetDelay_Fast(pThis, false));
 	return 0x4184F1;
 }
-
 DEFINE_HOOK(0x418506, AircraftClass_Mission_Attack_Delay1B, 0x6)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	pThis->IsLocked = true;
 	pThis->MissionStatus = pThis->Ammo > 0 ? (int)AirAttackStatus::PickAttackLocation : (int)AirAttackStatus::ReturnToBase;
-	R->EAX(GetDelay(pThis, false));
-
+	R->EAX(GetDelay_Fast(pThis, false));
 	return 0x418539;
 }
-
 DEFINE_HOOK(0x418883, AircraftClass_Mission_Attack_Delay2, 0x6)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	pThis->MissionStatus = (int)AirAttackStatus::FireAtTarget3_Strafe;
-	R->EAX(GetDelay(pThis, false));
-
+	R->EAX(GetDelay_Fast(pThis, false));
 	return 0x4188A1;
 }
-
 DEFINE_HOOK(0x418992, AircraftClass_Mission_Attack_Delay3, 0x6)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	pThis->MissionStatus = (int)AirAttackStatus::FireAtTarget4_Strafe;
-	R->EAX(GetDelay(pThis, false));
-
+	R->EAX(GetDelay_Fast(pThis, false));
 	return 0x4189B0;
 }
-
 DEFINE_HOOK(0x418AA1, AircraftClass_Mission_Attack_Delay4, 0x6)
 {
 	GET(AircraftClass*, pThis, ESI);
-
 	pThis->MissionStatus = (int)AirAttackStatus::FireAtTarget5_Strafe;
-	R->EAX(GetDelay(pThis, false));
-
+	R->EAX(GetDelay_Fast(pThis, false));
 	return 0x418ABF;
 }
-
 DEFINE_HOOK(0x418B8A, AircraftClass_Mission_Attack_Delay5, 0x6)
 {
 	GET(AircraftClass*, pThis, ESI);
-
-	R->EAX(GetDelay(pThis, true));
-
+	R->EAX(GetDelay_Fast(pThis, true));
 	return 0x418BBA;
 }
 
 #pragma endregion
 
-// Fix for OpenTopped aircraft circling issue when landing with passengers
-DEFINE_HOOK(0x417A2E, AircraftClass_EnterIdleMode_Opentopped, 0x5)
+void __fastcall AircraftClass_SetTarget_Wrapper(AircraftClass* pThis, void* _, AbstractClass* pTarget)
 {
-	GET(AircraftClass*, pThis, ESI);
-
-	// Safety check - ensure we have a valid aircraft pointer and type
-	if (!pThis || !pThis->Type)
-		return 0x417AD4;
-
-	R->EDI(2);
-
-	// This plane stuck on mission::Move! So let's redirect it to other address that deals with this
-	return !pThis->Spawned &&
-		pThis->Type->OpenTopped &&
-		(pThis->QueuedMission != Mission::Attack) && !pThis->Target
-		? 0x417944 : 0x417AD4;
+	pThis->TechnoClass::SetTarget(pTarget);
+	TechnoExt::ExtMap.Find(pThis)->CurrentAircraftWeaponIndex = -1;
 }
+DEFINE_FUNCTION_JUMP(VTABLE, 0x7E266C, AircraftClass_SetTarget_Wrapper);
 
 DEFINE_HOOK_AGAIN(0x41882C, AircraftClass_MissionAttack_ScatterCell1, 0x6);
 DEFINE_HOOK_AGAIN(0x41893B, AircraftClass_MissionAttack_ScatterCell1, 0x6);
@@ -363,7 +284,6 @@ DEFINE_HOOK(0x41847E, AircraftClass_MissionAttack_ScatterCell1, 0x6)
 	GET(AircraftClass*, pThis, ESI);
 	return TechnoTypeExt::ExtMap.Find(pThis->Type)->FiringForceScatter ? 0 : (R->Origin() + 0x44);
 }
-
 DEFINE_HOOK(0x4186DD, AircraftClass_MissionAttack_ScatterCell2, 0x5)
 {
 	GET(AircraftClass*, pThis, ESI);
@@ -375,7 +295,6 @@ DEFINE_HOOK(0x4186DD, AircraftClass_MissionAttack_ScatterCell2, 0x5)
 DEFINE_HOOK(0x414F10, AircraftClass_AI_Trailer, 0x5)
 {
 	enum { SkipGameCode = 0x414F47 };
-
 	GET(AircraftClass*, pThis, ESI);
 	REF_STACK(const CoordStruct, coords, STACK_OFFSET(0x40, -0xC));
 
@@ -384,7 +303,6 @@ DEFINE_HOOK(0x414F10, AircraftClass_AI_Trailer, 0x5)
 	AnimExt::SetAnimOwnerHouseKind(pTrailerAnim, pThis->Owner, nullptr, false, true);
 	pTrailerAnimExt->SetInvoker(pThis);
 	pTrailerAnimExt->IsTechnoTrailerAnim = true;
-
 	return SkipGameCode;
 }
 
@@ -393,7 +311,6 @@ DEFINE_HOOK(0x414C0B, AircraftClass_ChronoSparkleDelay, 0x5)
 	R->ECX(RulesExt::Global()->ChronoSparkleDisplayDelay);
 	return 0x414C10;
 }
-
 
 #pragma region LandingDir
 
@@ -408,11 +325,8 @@ DEFINE_HOOK(0x4CF31C, FlyLocomotionClass_FlightUpdate_LandingDir, 0x9)
 	const auto pFoot = *pFootPtr;
 	dir = 0;
 
-	if (!iFly)
-		return SetSecondaryFacing;
-
-	if (iFly->Is_Locked())
-		return SkipGameCode;
+	if (!iFly) return SetSecondaryFacing;
+	if (iFly->Is_Locked()) return SkipGameCode;
 
 	if (const auto pAircraft = abstract_cast<AircraftClass*, true>(pFoot))
 		dir = DirStruct(AircraftExt::GetLandingDir(pAircraft)).Raw;
@@ -422,17 +336,12 @@ DEFINE_HOOK(0x4CF31C, FlyLocomotionClass_FlightUpdate_LandingDir, 0x9)
 	return SetSecondaryFacing;
 }
 
-namespace SeparateAircraftTemp
-{
-	BuildingClass* pBuilding = nullptr;
-}
+namespace SeparateAircraftTemp { BuildingClass* pBuilding = nullptr; }
 
 DEFINE_HOOK(0x446F57, BuildingClass_GrandOpening_PoseDir_SetContext, 0x6)
 {
 	GET(BuildingClass*, pThis, EBP);
-
 	SeparateAircraftTemp::pBuilding = pThis;
-
 	return 0;
 }
 
@@ -440,15 +349,13 @@ DirType __fastcall AircraftClass_PoseDir_Wrapper(AircraftClass* pThis)
 {
 	return AircraftExt::GetLandingDir(pThis, SeparateAircraftTemp::pBuilding);
 }
-DEFINE_FUNCTION_JUMP(CALL, 0x446F67, AircraftClass_PoseDir_Wrapper); // BuildingClass_GrandOpening
+DEFINE_FUNCTION_JUMP(CALL, 0x446F67, AircraftClass_PoseDir_Wrapper);
 
 DEFINE_HOOK(0x443FC7, BuildingClass_ExitObject_PoseDir1, 0x8)
 {
 	GET(BuildingClass*, pThis, ESI);
 	GET(AircraftClass*, pAircraft, EBP);
-
 	R->EAX(AircraftExt::GetLandingDir(pAircraft, pThis));
-
 	return 0;
 }
 
@@ -458,12 +365,9 @@ DEFINE_HOOK(0x44402E, BuildingClass_ExitObject_PoseDir2, 0x5)
 	GET(AircraftClass*, pAircraft, EBP);
 
 	auto const dir = DirStruct(AircraftExt::GetLandingDir(pAircraft, pThis));
-
 	if (RulesExt::Global()->ExtendedAircraftMissions)
 		pAircraft->PrimaryFacing.SetCurrent(dir);
-
 	pAircraft->SecondaryFacing.SetCurrent(dir);
-
 	return 0;
 }
 
@@ -472,34 +376,29 @@ DEFINE_HOOK(0x44402E, BuildingClass_ExitObject_PoseDir2, 0x5)
 DEFINE_HOOK(0x415EEE, AircraftClass_Fire_KickOutPassengers, 0x6)
 {
 	enum { SkipKickOutPassengers = 0x415F08 };
-
 	GET(AircraftClass*, pThis, EDI);
 	GET_BASE(const int, weaponIdx, 0xC);
 
-	auto const pWeapon = pThis->GetWeapon(weaponIdx)->WeaponType;
+	auto const slot = pThis->GetWeapon(weaponIdx);
+	if (!slot) return 0;
 
-	if (!pWeapon)
-		return 0;
+	auto const pWeapon = slot->WeaponType;
+	if (!pWeapon) return 0;
 
-	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
+	if (!WeaponTypeExt::ExtMap.Find(pWeapon)->KickOutPassengers)
+		return SkipKickOutPassengers;
 
-	if (pWeaponExt->KickOutPassengers)
-		return 0;
-
-	return SkipKickOutPassengers;
+	return 0;
 }
 
-// Aircraft mission hard code are all disposable that no ammo, target died or arrived destination all will call the aircraft return airbase
 #pragma region ExtendedAircraftMissions
 
-// Waypoint: enable and smooth moving action
-bool __fastcall AircraftTypeClass_CanUseWaypoint(AircraftTypeClass* pThis)
+bool __fastcall AircraftTypeClass_CanUseWaypoint(AircraftTypeClass* /*pThis*/)
 {
 	return RulesExt::Global()->ExtendedAircraftMissions.Get();
 }
 DEFINE_FUNCTION_JUMP(VTABLE, 0x7E2908, AircraftTypeClass_CanUseWaypoint)
 
-// Move: smooth the planning paths and returning route
 DEFINE_HOOK_AGAIN(0x4168C7, AircraftClass_Mission_Move_SmoothMoving, 0x5)
 DEFINE_HOOK(0x416A0A, AircraftClass_Mission_Move_SmoothMoving, 0x5)
 {
@@ -508,79 +407,64 @@ DEFINE_HOOK(0x416A0A, AircraftClass_Mission_Move_SmoothMoving, 0x5)
 	GET(AircraftClass* const, pThis, ESI);
 	GET(CoordStruct const* const, pCoords, EAX);
 
-	if (pThis->Team || pThis->Airstrike || pThis->Spawned)
-		return 0;
+	if (pThis->Team || pThis->Airstrike || pThis->Spawned) return 0;
 
 	const auto pType = pThis->Type;
+	if (!pType->AirportBound) return 0;
 
-	if (!pType->AirportBound)
+	const bool extended = RulesExt::Global()->ExtendedAircraftMissions;
+	if (!TechnoTypeExt::ExtMap.Find(pType)->ExtendedAircraftMissions_SmoothMoving.Get(extended))
 		return 0;
 
-	const auto extendedMissions = RulesExt::Global()->ExtendedAircraftMissions;
+	const int distance = static_cast<int>(Point2D { pCoords->X - pThis->Location.X, pCoords->Y - pThis->Location.Y }.Magnitude());
+	const double rotRadian = std::abs(pThis->PrimaryFacing.ROT.Raw * (Math::TwoPi / 65536));
+	const int turningRadius = (rotRadian > 1e-10) ? static_cast<int>(pType->Speed / rotRadian) : 0;
 
-	if (!TechnoTypeExt::ExtMap.Find(pType)->ExtendedAircraftMissions_SmoothMoving.Get(extendedMissions))
-		return 0;
-
-	const int distance = static_cast<int>(Point2D { pCoords->X, pCoords->Y }.DistanceFrom(Point2D { pThis->Location.X, pThis->Location.Y }));
-
-	// When the horizontal distance between the aircraft and its destination is greater than half of its deceleration distance
-	// or its turning radius, continue to move forward, otherwise return to airbase or execute the next planning waypoint
-	const auto rotRadian = std::abs(pThis->PrimaryFacing.ROT.Raw * (Math::TwoPi / 65536)); // GetRadian<65536>() is an incorrect method
-	const auto turningRadius = rotRadian > 1e-10 ? static_cast<int>(pType->Speed / rotRadian) : 0;
-
-	if (distance > std::max((pType->SlowdownDistance / 2), turningRadius))
+	if (distance > std::max(pType->SlowdownDistance / 2, turningRadius))
 		return (R->Origin() == 0x4168C7 ? ContinueMoving1 : ContinueMoving2);
 
-	// Try next planning waypoint first, then return to air base if it does not exist or cannot be taken
-	if (!extendedMissions || !pThis->TryNextPlanningTokenNode())
+	if (!extended || !pThis->TryNextPlanningTokenNode())
 		pThis->EnterIdleMode(false, true);
 
 	return EnterIdleAndReturn;
 }
 
-DEFINE_HOOK(0x4DDD66, FootClass_IsLandZoneClear_ReplaceHardcode, 0x6) // To avoid that the aircraft cannot fly towards the water surface normally
+DEFINE_HOOK(0x4DDD66, FootClass_IsLandZoneClear_ReplaceHardcode, 0x6)
 {
 	enum { SkipGameCode = 0x4DDD8A };
-
 	GET(FootClass* const, pThis, EBP);
 	GET_STACK(CellStruct, cell, STACK_OFFSET(0x20, 0x4));
 
 	const auto pType = pThis->GetTechnoType();
-
-	// In vanilla, only aircrafts or `foots with fly locomotion` will call this virtual function
-	// So I don't know why WW use hard-coded `SpeedType::Track` and `MovementZone::Normal` to check this
 	R->AL(MapClass::Instance.GetCellAt(cell)->IsClearToMove(pType->SpeedType, false, false, -1, pType->MovementZone, -1, true));
 	return SkipGameCode;
 }
 
-DEFINE_HOOK(0x4CF190, FlyLocomotionClass_FlightUpdate_SetPrimaryFacing, 0x6) // Make aircraft not to fly directly to the airport before starting to land
+DEFINE_HOOK(0x4CF190, FlyLocomotionClass_FlightUpdate_SetPrimaryFacing, 0x6)
 {
 	enum { SkipGameCode = 0x4CF29A };
-
 	GET(IFlyControl* const, iFly, EAX);
 
 	if (!iFly || !iFly->Is_Locked())
 	{
 		GET(FootClass** const, pFootPtr, ESI);
-		// No const because it also need to be used by SecondaryFacing
 		REF_STACK(CoordStruct, destination, STACK_OFFSET(0x48, 0x8));
 
-		auto horizontalDistance = [&destination](const CoordStruct& location)
+		auto horizontalDistance = [&destination](const CoordStruct& loc)
 			{
-				const auto delta = Point2D { location.X, location.Y } - Point2D { destination.X, destination.Y };
-				return static_cast<int>(delta.Magnitude());
+				const auto d = Point2D { loc.X, loc.Y } - Point2D { destination.X, destination.Y };
+				return static_cast<int>(d.Magnitude());
 			};
 
 		const auto pFoot = *pFootPtr;
 		const auto pAircraft = abstract_cast<AircraftClass*, true>(pFoot);
 
-		// Rewrite vanilla implement
 		if (!pAircraft || !TechnoTypeExt::ExtMap.Find(pAircraft->Type)->ExtendedAircraftMissions_RearApproach.Get(RulesExt::Global()->ExtendedAircraftMissions))
 		{
 			const auto footCoords = pFoot->GetCoords();
 			const auto desired = DirStruct(Math::atan2(footCoords.Y - destination.Y, destination.X - footCoords.X));
 
-			if (!iFly || !iFly->Is_Strafe() || horizontalDistance(footCoords) > 768 // I don't know why it's 3 cells' length, but its vanilla, keep it
+			if (!iFly || !iFly->Is_Strafe() || horizontalDistance(footCoords) > 768
 				|| std::abs(static_cast<short>(static_cast<short>(desired.Raw) - static_cast<short>(pFoot->PrimaryFacing.Current().Raw))) <= 8192)
 			{
 				pFoot->PrimaryFacing.SetDesired(desired);
@@ -589,37 +473,26 @@ DEFINE_HOOK(0x4CF190, FlyLocomotionClass_FlightUpdate_SetPrimaryFacing, 0x6) // 
 		else
 		{
 			const auto footCoords = pAircraft->GetCoords();
-			const auto landingDir = DirStruct(AircraftExt::GetLandingDir(pAircraft));
+			const DirStruct landingDir = DirStruct(AircraftExt::GetLandingDir(pAircraft));
 
-			// Try to land from the rear
 			if (pAircraft->Destination && (pAircraft->DockNowHeadingTo == pAircraft->Destination || pAircraft->SpawnOwner == pAircraft->Destination))
 			{
 				const auto pType = pAircraft->Type;
-
-				// Like smooth moving
 				const auto rotRadian = std::abs(pAircraft->PrimaryFacing.ROT.Raw * (Math::TwoPi / 65536));
 				const auto turningRadius = rotRadian > 1e-10 ? static_cast<int>(pType->Speed / rotRadian) : 0;
-
-				// diameter = 2 * radius
 				const auto cellCounts = Math::max((pType->SlowdownDistance / Unsorted::LeptonsPerCell), (turningRadius / 128));
 
-				// The direction of the airport
 				const auto currentDir = DirStruct(Math::atan2(footCoords.Y - destination.Y, destination.X - footCoords.X));
-
-				// Included angle's raw
 				const auto difference = static_cast<short>(static_cast<short>(currentDir.Raw) - static_cast<short>(landingDir.Raw));
 
-				// Land from this direction of the airport
 				const auto landingFace = landingDir.GetFacing<8>(4);
 				auto cellOffset = Unsorted::AdjacentCoord[landingFace];
 
-				// When the direction is opposite, moving to the side first, then automatically shorten based on the current distance
-				if (std::abs(difference) >= 12288) // 12288 -> 3/16 * 65536 (1/8 < 3/16 < 1/4, so the landing can begin at the appropriate location)
+				if (std::abs(difference) >= 12288) // 3/16 of full circle
 					cellOffset = (cellOffset + Unsorted::AdjacentCoord[((difference > 0) ? (landingFace + 2) : (landingFace - 2)) & 7]) * cellCounts;
-				else // 724 -> 512√2
+				else
 					cellOffset *= Math::min(cellCounts, ((landingFace & 1) ? (horizontalDistance(footCoords) / 724) : (horizontalDistance(footCoords) / 512)));
 
-				// On the way back, increase the offset value of the destination so that it looks like a real airplane
 				destination.X += cellOffset.X;
 				destination.Y += cellOffset.Y;
 			}
@@ -630,115 +503,116 @@ DEFINE_HOOK(0x4CF190, FlyLocomotionClass_FlightUpdate_SetPrimaryFacing, 0x6) // 
 				pAircraft->PrimaryFacing.SetDesired(landingDir);
 		}
 	}
-
 	return SkipGameCode;
 }
 
-DEFINE_HOOK(0x4CF3D0, FlyLocomotionClass_FlightUpdate_SetFlightLevel, 0x7) // Make aircraft not have to fly directly above the airport before starting to descend
+DEFINE_HOOK(0x4CF3D0, FlyLocomotionClass_FlightUpdate_SetFlightLevel, 0x7)
 {
 	GET(FootClass** const, pFootPtr, ESI);
-
 	const auto pAircraft = abstract_cast<AircraftClass*, true>(*pFootPtr);
-
-	if (!pAircraft)
-		return 0;
+	if (!pAircraft) { return 0; }
 
 	const auto pType = pAircraft->Type;
+	if (pType->HunterSeeker) { return 0; }
 
-	// Ares hook
-	if (pType->HunterSeeker)
+	if (!TechnoTypeExt::ExtMap.Find(pType)->ExtendedAircraftMissions_EarlyDescend
+			.Get(RulesExt::Global()->ExtendedAircraftMissions))
+	{
 		return 0;
-
-	if (!TechnoTypeExt::ExtMap.Find(pType)->ExtendedAircraftMissions_EarlyDescend.Get(RulesExt::Global()->ExtendedAircraftMissions))
-		return 0;
+	}
 
 	enum { SkipGameCode = 0x4CF4D2 };
 
 	GET_STACK(FlyLocomotionClass* const, pThis, STACK_OFFSET(0x48, -0x28));
 	GET(const int, distance, EBX);
 
-	// Restore skipped code
+	// restore EBP as the original code expects
 	R->EBP(pThis);
 
-	// Same as vanilla
+	// Early-elevate stage: use destination floor height – only if destination cell is valid
 	if (pThis->IsElevating && distance < 768)
 	{
-		// Fast descent
-		const auto floorHeight = MapClass::Instance.GetCellFloorHeight(pThis->MovingDestination);
-		pThis->FlightLevel = pThis->MovingDestination.Z - floorHeight;
+		if (MapClass::Instance.TryGetCellAt(pThis->MovingDestination))
+		{
+			const auto floorHeight = MapClass::Instance.GetCellFloorHeight(pThis->MovingDestination);
+			pThis->FlightLevel = pThis->MovingDestination.Z - floorHeight;
 
-		// Bug fix
-		if (MapClass::Instance.GetCellAt(pAircraft->Location)->ContainsBridge() && pThis->FlightLevel >= CellClass::BridgeHeight)
-			pThis->FlightLevel -= CellClass::BridgeHeight;
-
-		return SkipGameCode;
+			// Bridge correction – only if current location cell exists
+			if (const auto* locCell = MapClass::Instance.TryGetCellAt(pAircraft->Location))
+			{
+				if (locCell->ContainsBridge() && pThis->FlightLevel >= CellClass::BridgeHeight)
+				{
+					pThis->FlightLevel -= CellClass::BridgeHeight;
+				}
+			}
+			return SkipGameCode;
+		}
+		// If dest is off-map this tick, fall through to default below
 	}
 
 	const auto flightLevel = pType->GetFlightLevel();
 
-	// Check returning actions
+	// Smooth descent toward docks/spawn owner – only if destination cell is valid
 	if (distance < pType->SlowdownDistance && pAircraft->Destination
-		&& (pAircraft->DockNowHeadingTo == pAircraft->Destination || pAircraft->SpawnOwner == pAircraft->Destination))
+		&& (pAircraft->DockNowHeadingTo == pAircraft->Destination
+			|| pAircraft->SpawnOwner == pAircraft->Destination))
 	{
-		// Slow descent
-		const auto floorHeight = MapClass::Instance.GetCellFloorHeight(pThis->MovingDestination);
-		const auto destinationHeight = pThis->MovingDestination.Z - floorHeight + 1;
-		pThis->FlightLevel = static_cast<int>((flightLevel - destinationHeight) * (static_cast<double>(distance) / pType->SlowdownDistance)) + destinationHeight;
-	}
-	else
-	{
-		// Horizontal flight
-		pThis->FlightLevel = flightLevel;
+		if (MapClass::Instance.TryGetCellAt(pThis->MovingDestination))
+		{
+			const auto floorHeight = MapClass::Instance.GetCellFloorHeight(pThis->MovingDestination);
+			const auto destHeight = pThis->MovingDestination.Z - floorHeight + 1;
+
+			// vanilla interpolation retained
+			pThis->FlightLevel = static_cast<int>(
+				(flightLevel - destHeight) * (static_cast<double>(distance) / pType->SlowdownDistance)
+			) + destHeight;
+
+			return SkipGameCode;
+		}
+		// If dest is invalid, fall back to default level below
 	}
 
+	// Default behaviour
+	pThis->FlightLevel = flightLevel;
 	return SkipGameCode;
 }
 
-// AreaGuard: return when no ammo or first target died
 DEFINE_HOOK_AGAIN(0x41A982, AircraftClass_Mission_AreaGuard, 0x6)
 DEFINE_HOOK(0x41A96C, AircraftClass_Mission_AreaGuard, 0x6)
 {
 	enum { SkipGameCode = 0x41A97A };
-
 	GET(AircraftClass* const, pThis, ESI);
 
 	if (RulesExt::Global()->ExtendedAircraftMissions && !pThis->Team && pThis->Ammo && pThis->IsArmed())
 	{
 		auto coords = pThis->GetCoords();
-
 		if (pThis->TargetAndEstimateDamage(coords, ThreatType::Area))
 			pThis->QueueMission(Mission::Attack, false);
 		else if (pThis->Destination && pThis->Destination != pThis->DockNowHeadingTo)
 			pThis->EnterIdleMode(false, true);
-
 		return SkipGameCode;
 	}
-
 	return 0;
 }
 
-// Sleep: return to airbase if in incorrect sleep status
 int __fastcall AircraftClass_Mission_Sleep(AircraftClass* pThis)
 {
 	if (!pThis->Destination || pThis->Destination == pThis->DockNowHeadingTo)
-		return 450; // Vanilla MissionClass_Mission_Sleep value
-
+		return 450;
 	pThis->EnterIdleMode(false, true);
 	return 1;
 }
 DEFINE_FUNCTION_JUMP(VTABLE, 0x7E24A8, AircraftClass_Mission_Sleep)
 
-// AttackMove: return when no ammo or arrived destination
-bool __fastcall AircraftTypeClass_CanAttackMove(AircraftTypeClass* pThis)
+bool __fastcall AircraftTypeClass_CanAttackMove(AircraftTypeClass* /*pThis*/)
 {
 	return RulesExt::Global()->ExtendedAircraftMissions.Get();
 }
 DEFINE_FUNCTION_JUMP(VTABLE, 0x7E290C, AircraftTypeClass_CanAttackMove)
 
-DEFINE_HOOK(0x6FA68B, TechnoClass_Update_AttackMovePaused, 0xA) // To make aircrafts not search for targets while resting at the airport, this is designed to adapt to loop waypoint
+DEFINE_HOOK(0x6FA68B, TechnoClass_Update_AttackMovePaused, 0xA)
 {
 	enum { SkipGameCode = 0x6FA6F5 };
-
 	GET(TechnoClass* const, pThis, ESI);
 
 	const bool skip = RulesExt::Global()->ExtendedAircraftMissions
@@ -748,33 +622,25 @@ DEFINE_HOOK(0x6FA68B, TechnoClass_Update_AttackMovePaused, 0xA) // To make aircr
 	return skip ? SkipGameCode : 0;
 }
 
-DEFINE_HOOK(0x4DF3BA, FootClass_UpdateAttackMove_AircraftHoldAttackMoveTarget1, 0x6) // When it have MegaDestination
+DEFINE_HOOK(0x4DF3BA, FootClass_UpdateAttackMove_AircraftHoldAttackMoveTarget1, 0x6)
 {
 	enum { LoseTarget = 0x4DF3D3, HoldTarget = 0x4DF4AB };
-
 	GET(FootClass* const, pThis, ESI);
-
-	// The aircraft is constantly moving, which may cause its target to constantly enter and leave its range, so it is fixed to hold the target.
-	if (RulesExt::Global()->ExtendedAircraftMissions && pThis->WhatAmI() == AbstractType::Aircraft)
-		return HoldTarget;
-
-	return pThis->InAuxiliarySearchRange(pThis->Target) ? HoldTarget : LoseTarget;
+	return (RulesExt::Global()->ExtendedAircraftMissions && pThis->WhatAmI() == AbstractType::Aircraft)
+		? HoldTarget
+		: (pThis->InAuxiliarySearchRange(pThis->Target) ? HoldTarget : LoseTarget);
 }
 
-DEFINE_HOOK(0x4DF42A, FootClass_UpdateAttackMove_AircraftHoldAttackMoveTarget2, 0x6) // When it have MegaTarget
+DEFINE_HOOK(0x4DF42A, FootClass_UpdateAttackMove_AircraftHoldAttackMoveTarget2, 0x6)
 {
 	enum { ContinueCheck = 0x4DF462, HoldTarget = 0x4DF4AB };
-
 	GET(FootClass* const, pThis, ESI);
-
-	// Although if the target selected by CS is an object rather than cell.
 	return (RulesExt::Global()->ExtendedAircraftMissions && pThis->WhatAmI() == AbstractType::Aircraft) ? HoldTarget : ContinueCheck;
 }
 
 DEFINE_HOOK(0x418CD1, AircraftClass_Mission_Attack_ContinueFlyToDestination, 0x6)
 {
 	enum { Continue = 0x418C43, Return = 0x418CE8 };
-
 	GET(AircraftClass* const, pThis, ESI);
 
 	if (!pThis->Target)
@@ -795,33 +661,6 @@ DEFINE_HOOK(0x418CD1, AircraftClass_Mission_Attack_ContinueFlyToDestination, 0x6
 	return Return;
 }
 
-// Jun 10, 2025 - Starkku: This is a bandaid fix to AI scripting problem that causes more issues than it solves so I have disabled it.
-/*
-// Idle: clear the target if no ammo
-DEFINE_HOOK(0x414D4D, AircraftClass_Update_ClearTargetIfNoAmmo, 0x6)
-{
-	enum { ClearTarget = 0x414D3F };
-
-	GET(AircraftClass* const, pThis, ESI);
-
-	if (RulesExt::Global()->ExtendedAircraftMissions && !pThis->Ammo && !pThis->Airstrike && !pThis->Spawned)
-	{
-		if (!SessionClass::IsCampaign()) // To avoid AI's aircrafts team repeatedly attempting to attack the target when no ammo
-		{
-			if (const auto pTeam = pThis->Team)
-				pTeam->LiberateMember(pThis);
-		}
-
-		return ClearTarget;
-	}
-
-	return 0;
-}*/
-
-// Stop: clear the mega mission and return to airbase immediately
-// (StopEventFix's DEFINE_HOOK(0x4C75DA, EventClass_RespondToEvent_Stop, 0x6) in Hooks.BugFixes.cpp)
-
-// GreatestThreat: for all the mission that should let the aircraft auto select a target
 AbstractClass* __fastcall AircraftClass_GreatestThreat(AircraftClass* pThis, void* _, ThreatType threatType, CoordStruct* pSelectCoords, bool onlyTargetHouseEnemy)
 {
 	if (RulesExt::Global()->ExtendedAircraftMissions && !pThis->Team && pThis->Ammo && !pThis->Airstrike && !pThis->Spawned)
@@ -841,24 +680,18 @@ DEFINE_FUNCTION_JUMP(VTABLE, 0x7E2668, AircraftClass_GreatestThreat)
 DEFINE_HOOK(0x4C7403, EventClass_Execute_AircraftAreaGuard, 0x6)
 {
 	enum { SkipGameCode = 0x4C7435 };
-
 	GET(TechnoClass* const, pTechno, EDI);
 
-	if (RulesExt::Global()->ExtendedAircraftMissions
-		&& pTechno->WhatAmI() == AbstractType::Aircraft)
-	{
-		// Skip assigning destination / target here.
+	if (RulesExt::Global()->ExtendedAircraftMissions && pTechno->WhatAmI() == AbstractType::Aircraft)
 		return SkipGameCode;
-	}
 
 	return 0;
 }
 
-// Do not untether aircraft when assigning area guard mission by default.
+// Do not untether aircraft by default for area guard, unless really needed.
 DEFINE_HOOK(0x4C72F2, EventClass_Execute_AircraftAreaGuard_Untether, 0x6)
 {
 	enum { SkipGameCode = 0x4C7349 };
-
 	GET(EventClass* const, pThis, ESI);
 	GET(TechnoClass* const, pTechno, EDI);
 
@@ -867,61 +700,73 @@ DEFINE_HOOK(0x4C72F2, EventClass_Execute_AircraftAreaGuard_Untether, 0x6)
 		&& pThis->MegaMission.Mission == (char)Mission::Area_Guard
 		&& (pTechno->CurrentMission != Mission::Sleep || !pTechno->Ammo))
 	{
-		// If we're on dock reloading but have ammo, untether from dock and try to scan for targets.
 		return SkipGameCode;
 	}
-
 	return 0;
 }
 
 DEFINE_HOOK(0x418CF3, AircraftClass_Mission_Attack_PlanningFix, 0x5)
 {
 	enum { SkipIdle = 0x418D00 };
-
 	GET(AircraftClass*, pThis, ESI);
-
 	return pThis->Ammo <= 0 || !pThis->TryNextPlanningTokenNode() ? 0 : SkipIdle;
 }
 
 #pragma endregion
 
+// Spy Plane camera shot limiter (deterministic)
 static __forceinline bool CheckSpyPlaneCameraCount(AircraftClass* pThis)
 {
-	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pThis->GetWeapon(0)->WeaponType);
+	auto const pWT0 = pThis->GetWeapon(0);
+	if (!pWT0 || !pWT0->WeaponType) return true;
+	auto const pWTExt = WeaponTypeExt::ExtMap.Find(pWT0->WeaponType);
 
-	if (!pWeaponExt->Strafing_Shots.isset())
+	if (!pWTExt->Strafing_Shots.isset())
 		return true;
 
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
-
-	if (pExt->Strafe_BombsDroppedThisRound >= pWeaponExt->Strafing_Shots)
+	if (pExt->Strafe_BombsDroppedThisRound >= pWTExt->Strafing_Shots)
 		return false;
 
 	pExt->Strafe_BombsDroppedThisRound++;
-
 	return true;
 }
 
 DEFINE_HOOK(0x415666, AircraftClass_Mission_SpyPlaneApproach_MaxCount, 0x6)
 {
 	enum { Skip = 0x41570C };
-
 	GET(AircraftClass*, pThis, ESI);
-
-	if (!CheckSpyPlaneCameraCount(pThis))
-		return Skip;
-
-	return 0;
+	return CheckSpyPlaneCameraCount(pThis) ? 0 : Skip;
 }
-
 DEFINE_HOOK(0x4157EB, AircraftClass_Mission_SpyPlaneOverfly_MaxCount, 0x6)
 {
 	enum { Skip = 0x415863 };
-
 	GET(AircraftClass*, pThis, ESI);
+	return CheckSpyPlaneCameraCount(pThis) ? 0 : Skip;
+}
 
-	if (!CheckSpyPlaneCameraCount(pThis))
-		return Skip;
+// Optional: carryall pickup voice (deterministic, single-call)
+/*Already in TechnoHooks
 
+DEFINE_HOOK(0x708FC0, TechnoClass_ResponseMove_Pickup, 0x5)
+{
+	enum { SkipResponse = 0x709015 };
+	GET(TechnoClass*, pThis, ECX);
+
+	if (auto const pAircraft = abstract_cast<AircraftClass*>(pThis))
+	{
+		auto const pType = pAircraft->Type;
+		if (pType->Carryall && pAircraft->HasAnyLink() && generic_cast<FootClass*>(pAircraft->Destination))
+		{
+			auto const pTypeExt = TechnoTypeExt::ExtMap.Find(pType);
+			if (pTypeExt->VoicePickup.isset())
+			{
+				pThis->QueueVoice(pTypeExt->VoicePickup.Get());
+				R->EAX(1);
+				return SkipResponse;
+			}
+		}
+	}
 	return 0;
 }
+*/

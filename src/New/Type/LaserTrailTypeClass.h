@@ -24,6 +24,9 @@ public:
 	Valueable<bool> CloakVisible_DetectedOnly;
 	Valueable<bool> DroppodOnly;
 
+	// Cached for runtime: avoid per-frame multiply/sqrt in LaserTrailClass::Update
+	int SegmentLengthSq;
+
 	LaserTrailTypeClass(const char* pTitle = NONE_STR) : Enumerable<LaserTrailTypeClass>(pTitle)
 		, DrawType { LaserTrailDrawType::Laser }
 		, IsHouseColor { false }
@@ -42,6 +45,7 @@ public:
 		, CloakVisible { false }
 		, CloakVisible_DetectedOnly { false }
 		, DroppodOnly { false }
+		, SegmentLengthSq { 128 * 128 }
 	{ }
 
 	void LoadFromINI(CCINIClass* pINI);

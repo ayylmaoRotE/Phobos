@@ -225,7 +225,7 @@ DEFINE_HOOK(0x67E68A, LoadGame_UnsetFlag, 0x5)
 {
 	Phobos::IsLoadingSaveGame = false;
 	Phobos::ApplyOptimizations();
-	
+
 	return 0;
 }
 

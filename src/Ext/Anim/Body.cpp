@@ -7,17 +7,9 @@
 #include <Ext/WarheadType/Body.h>
 #include <Misc/SyncLogging.h>
 
-// stable, single-pass erase of the first matching pointer; preserves order
-template<typename T>
-static __forceinline void stable_erase_first(std::vector<T*>& v, T* value)
-{
-	for (size_t i = 0, n = v.size(); i < n; ++i)
-	{
-		if (v[i] == value) { v.erase(v.begin() + i); return; }
-	}
-}
+AnimExt::ExtContainer AnimExt::ExtMap;
+std::vector<AnimClass*> AnimExt::AnimsWithAttachedParticles;
 
-// swap-to-back erase for better performance when order doesn't matter
 template<typename T>
 static __forceinline void swap_erase_ptr(std::vector<T*>& v, T* value)
 {
@@ -26,9 +18,6 @@ static __forceinline void swap_erase_ptr(std::vector<T*>& v, T* value)
 		if (v[i] == value) { if (i + 1 != n) std::swap(v[i], v[n - 1]); v.pop_back(); return; }
 	}
 }
-
-AnimExt::ExtContainer AnimExt::ExtMap;
-std::vector<AnimClass*> AnimExt::AnimsWithAttachedParticles;
 
 AnimExt::ExtData::~ExtData()
 {
@@ -62,26 +51,18 @@ void AnimExt::ExtData::SetInvoker(TechnoClass* pInvoker, HouseClass* pInvokerHou
 
 void AnimExt::ExtData::CreateAttachedSystem()
 {
-	const auto pThis = this->OwnerObject();
-	const auto pTypeExt = AnimTypeExt::ExtMap.TryFind(pThis->Type);
-
+	AnimClass* const pThis = this->OwnerObject();
+	auto const pTypeExt = AnimTypeExt::ExtMap.TryFind(pThis->Type);
 	if (pTypeExt && pTypeExt->AttachedSystem && !this->AttachedSystem)
 	{
-		this->AttachedSystem = GameCreate<ParticleSystemClass>(pTypeExt->AttachedSystem.Get(), pThis->Location, pThis->GetCell(), pThis, CoordStruct::Empty, nullptr);
-		AnimExt::AnimsWithAttachedParticles.push_back(pThis);
-	}
-}
+		this->AttachedSystem = GameCreate<ParticleSystemClass>(
+			pTypeExt->AttachedSystem.Get(), pThis->Location, pThis->GetCell(), pThis, CoordStruct::Empty, nullptr);
 
-void AnimExt::ExtData::DeleteAttachedSystem()
-{
-	if (this->AttachedSystem)
-	{
-		this->AttachedSystem->Owner = nullptr;
-		this->AttachedSystem->UnInit();
-		this->AttachedSystem = nullptr;
-
-		auto& vec = AnimExt::AnimsWithAttachedParticles;
-		stable_erase_first(vec, this->OwnerObject()); // Performance optimization: was erase(remove(...))
+		auto& v = AnimExt::AnimsWithAttachedParticles;
+		if (std::find(v.begin(), v.end(), pThis) == v.end())
+		{
+			v.push_back(pThis);
+		}
 	}
 }
 
@@ -386,7 +367,7 @@ void AnimExt::SpawnConcurrentAnims(AnimClass* pThis)
 		return;
 
 	const auto pTypeExt = AnimTypeExt::ExtMap.Find(pThis->Type);
-	
+
 	if (pTypeExt->ConcurrentAnim.empty() || pTypeExt->ConcurrentChance.Get() <= 0.0)
 		return;
 
@@ -400,7 +381,7 @@ void AnimExt::SpawnConcurrentAnims(AnimClass* pThis)
 			continue;
 
 		// Get individual chance or fallback to default chance
-		double chance = pTypeExt->ConcurrentChances.size() > i ? 
+		double chance = pTypeExt->ConcurrentChances.size() > i ?
 			pTypeExt->ConcurrentChances[i] : pTypeExt->ConcurrentChance.Get();
 
 		// Check if animation should spawn
@@ -546,6 +527,17 @@ void AnimExt::InvalidateParticleSystemPointers(ParticleSystemClass* pPS)
 		}
 		++i;
 	}
+}
+
+void AnimExt::ExtData::DeleteAttachedSystem()
+{
+	if (!this->AttachedSystem) return;
+	this->AttachedSystem->Owner = nullptr;
+	this->AttachedSystem->UnInit();
+	this->AttachedSystem = nullptr;
+
+	auto& v = AnimExt::AnimsWithAttachedParticles;
+	v.erase(std::remove(v.begin(), v.end(), this->OwnerObject()), v.end());
 }
 
 // =============================

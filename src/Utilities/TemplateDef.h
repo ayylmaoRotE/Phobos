@@ -630,7 +630,7 @@ namespace detail
 				"self", "base", "multimissile", "hunterseeker", "enemybase", "ironcurtain",
 				"attack", "lowpower", "lowpowerattack", "droppod", "lightningrandom",
 				"launchsite", "findauxtechno", "ioncannon" };
-				
+
 			constexpr size_t ModesCount = sizeof(Modes) / sizeof(Modes[0]);
 
 			for (auto i = 0u; i < ModesCount; ++i)

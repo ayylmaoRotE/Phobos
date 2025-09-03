@@ -11,23 +11,21 @@ DEFINE_HOOK(0x74A70E, VoxelAnimClass_AI_Additional, 0xC)
 {
 	GET(VoxelAnimClass* const, pThis, EBX);
 
-	//auto pTypeExt = VoxelAnimTypeExt::ExtMap.Find(pThis->Type);
-	const auto pThisExt = VoxelAnimExt::ExtMap.Find(pThis);
+	const auto* const pThisExt = VoxelAnimExt::ExtMap.Find(pThis);
+	if (!pThisExt || pThisExt->LaserTrails.empty())
+		return 0;
 
-	if (!pThisExt->LaserTrails.empty())
+	const CoordStruct location = pThis->GetCoords();
+	const bool visible = pThis->IsVisible;
+
+	for (const auto& pTrail : pThisExt->LaserTrails)
 	{
-		const CoordStruct location = pThis->GetCoords();
+		if (!pTrail->LastLocation.isset())
+			pTrail->LastLocation = location;
 
-		for (const auto& pTrail : pThisExt->LaserTrails)
-		{
-			if (!pTrail->LastLocation.isset())
-				pTrail->LastLocation = location;
-
-			pTrail->Visible = pThis->IsVisible;
-			pTrail->Update(location);
-		}
+		pTrail->Visible = visible;
+		pTrail->Update(location);
 	}
-
 	return 0;
 }
 
@@ -52,22 +50,26 @@ DEFINE_HOOK(0x74A027, VoxelAnimClass_AI_Expired, 0x6)
 DEFINE_HOOK(0x74A70E, VoxelAnimClass_AI_Trailer, 0x6)
 {
 	enum { SkipGameCode = 0x74A7AB };
-
 	GET(VoxelAnimClass* const, pThis, EBX);
 
-	const auto pType = pThis->Type;
-
-	if (const auto pAnimType = pType->TrailerAnim)
+	auto* const pType = pThis->Type;
+	if (const auto pAnimType = pType ? pType->TrailerAnim : nullptr)
 	{
-		const auto pExt = VoxelAnimExt::ExtMap.Find(pThis);
-
-		if (pExt->TrailerSpawnTimer.Expired())
+		auto* const pExt = VoxelAnimExt::ExtMap.Find(pThis);
+		if (pExt && pExt->TrailerSpawnTimer.Expired())
 		{
-			pExt->TrailerSpawnTimer.Start(VoxelAnimTypeExt::ExtMap.Find(pType)->Trailer_SpawnDelay.Get());
-			auto const pTrailerAnim = GameCreate<AnimClass>(pAnimType, pThis->Location, 1, 1);
-			AnimExt::SetAnimOwnerHouseKind(pTrailerAnim, pThis->OwnerHouse, nullptr, false, true);
+			const auto delay =
+				VoxelAnimTypeExt::ExtMap.Find(pType)->Trailer_SpawnDelay.Get();
+			pExt->TrailerSpawnTimer.Start(delay);
+
+			if (auto* const pTrailerAnim =
+					GameCreate<AnimClass>(pAnimType, pThis->Location, 1, 1))
+			{
+				AnimExt::SetAnimOwnerHouseKind(
+					pTrailerAnim, pThis->OwnerHouse, nullptr, false, true);
+			}
+			// if creation fails, we simply try again after 'delay' — matches old cadence
 		}
 	}
-
 	return SkipGameCode;
 }

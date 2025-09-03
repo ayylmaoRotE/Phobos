@@ -208,9 +208,7 @@ public:
 		Valueable<double> AffectsBelowPercent;
 		Valueable<double> AffectsAbovePercent;
 		Valueable<bool> AffectsNeutral;
-
 		Valueable<bool> ReverseEngineer;
-
 		Valueable<bool> CanKill;
 
 		// Ares tags
@@ -232,10 +230,11 @@ public:
 		bool HealthCheck;
 		TechnoClass* DamageAreaTarget;
 
-		std::map<std::string, AnimTypeClass*> ArmorHitAnim;
 		// Stable storage for dynamic HitAnim serialization using parallel vectors
 		std::vector<std::string> ArmorNames;
 		std::vector<std::string> AnimIDs;
+
+		std::map<std::string, AnimTypeClass*> ArmorHitAnim;
 		static std::map<std::string, std::string> ArmorTypeInheritance; // maps custom armor -> base armor
 
 	private:
@@ -462,7 +461,7 @@ public:
 		AnimTypeClass* GetArmorHitAnimWithFallback(const char* armorName) const;
 		void StoreArmorHitAnimIDs();
 		void ReconstructArmorHitAnimFromIDs();
-		
+
 		static void LoadArmorTypeInheritance(CCINIClass* pINI);
 	static void ReloadAllHitAnimData(CCINIClass* pINI);
 

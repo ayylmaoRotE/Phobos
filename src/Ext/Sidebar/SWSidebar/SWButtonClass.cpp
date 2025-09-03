@@ -39,8 +39,12 @@ bool SWButtonClass::Draw(bool forced)
 	RectangleStruct destRect = { location.X, location.Y, this->Width, this->Height };
 
 	const auto pCurrent = HouseClass::CurrentPlayer;
+	if (!pCurrent || !pCurrent->Supers.ValidIndex(this->SuperIndex))
+		return false;
+
 	const auto pSuper = pCurrent->Supers[this->SuperIndex];
 	if (!pSuper || !pSuper->Type) return false;
+
 	const auto pType = pSuper->Type;
 	const auto pSWExt = SWTypeExt::ExtMap.Find(pType);
 	if (!pSWExt) return false;
@@ -170,24 +174,24 @@ bool SWButtonClass::Draw(bool forced)
 		Point2D loc = { location.X, location.Y };
 		BlitterFlags blitterFlags = BlitterFlags::bf_400;
 		SHPStruct* pGClockSHP = FileSystem::GCLOCK2_SHP;
-		
+
 		// Use custom gclock image if specified with caching to prevent excessive file loads
 		if (pSWExt->SidebarGClockImage.data()[0] != '\0')
 		{
 			static std::unordered_map<std::string, SHPStruct*> gclockCache;
 			const std::string filename = pSWExt->SidebarGClockImage.data();
-			
+
 			auto it = gclockCache.find(filename);
 			if (it == gclockCache.end())
 			{
 				auto pCustomGClock = FileSystem::LoadSHPFile(filename.c_str());
 				it = gclockCache.emplace(filename, pCustomGClock).first;
 			}
-			
+
 			if (it->second)
 				pGClockSHP = it->second;
 		}
-		
+
 		// Apply custom translucency settings
 		if (pSWExt->SidebarGClockTranslucent)
 		{
@@ -201,7 +205,7 @@ bool SWButtonClass::Draw(bool forced)
 			else
 				blitterFlags |= BlitterFlags::bf_400; // No translucency for 100%
 		}
-		
+
 		pSurface->DrawSHP(FileSystem::SIDEBAR_PAL, pGClockSHP, pSuper->AnimStage() + 1, &loc, &bounds, blitterFlags, 0, 0, ZGradient::Ground, 1000, 0, nullptr, 0, 0, 0);
 	}
 
@@ -255,11 +259,16 @@ void SWButtonClass::SetColumn(int column)
 bool SWButtonClass::LaunchSuper() const
 {
 	const auto pCurrent = HouseClass::CurrentPlayer;
+	if (!pCurrent || !pCurrent->Supers.ValidIndex(this->SuperIndex))
+		return false;
+
 	const auto pSuper = pCurrent->Supers[this->SuperIndex];
 	if (!pSuper || !pSuper->Type) return false;
+
 	const auto pType = pSuper->Type;
 	const auto pSWExt = SWTypeExt::ExtMap.Find(pType);
 	if (!pSWExt) return false;
+
 	const auto pCurExt = HouseExt::ExtMap.Find(pCurrent);
 	const bool manual = !pSWExt->SW_ManualFire && pSWExt->SW_AutoFire;
 	const bool unstoppable = pType->UseChargeDrain && pSuper->ChargeDrainState == ChargeDrainState::Draining && pSWExt->SW_Unstoppable;

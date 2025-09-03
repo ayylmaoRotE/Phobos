@@ -117,6 +117,7 @@ public:
 		Valueable<bool> SidebarGClockTranslucent;
 		Valueable<int> SidebarGClockTranslucentLevel;
 
+
 		ValueableIdxVector<SuperWeaponTypeClass> SW_Link;
 		Valueable<bool> SW_Link_Grant;
 		Valueable<bool> SW_Link_Ready;

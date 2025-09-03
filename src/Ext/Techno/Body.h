@@ -9,6 +9,7 @@
 #include <New/Entity/ShieldClass.h>
 #include <New/Entity/LaserTrailClass.h>
 #include <New/Entity/AttachEffectClass.h>
+#include <Utilities/Savegame.h>
 #include <New/AnonymousType/GiftBox.h>
 
 class BulletClass;
@@ -62,6 +63,47 @@ public:
 		bool ShouldUpdateGattlingValue;
 		int AttachedEffectInvokerCount;
 
+		// ---- STOP vs CLEAR stamps (persisted) ----
+		int32_t Harv_SuppressLastStopFrame { INT32_MIN };
+		int32_t Harv_SuppressLastClearFrame { INT32_MIN };
+		__forceinline void Harv_MarkStopSuppress() noexcept { Harv_SuppressLastStopFrame = (int32_t)Unsorted::CurrentFrame; }
+		__forceinline void Harv_MarkManualClear()  noexcept { Harv_SuppressLastClearFrame = (int32_t)Unsorted::CurrentFrame; }
+		__forceinline bool Harv_IsSuppressed() const noexcept { return Harv_SuppressLastStopFrame > Harv_SuppressLastClearFrame; }
+
+		// ---- Auto-return “issued now” stamp (for the manual-clear hook guard) ----
+		int32_t Harvester_AutoReturn_LastIssueFrame { INT32_MIN };
+		__forceinline bool Harv_IssuedAutoReturnRecently(int graceFrames = 1) const noexcept
+		{
+			const auto now = (int32_t)Unsorted::CurrentFrame;
+			return Harvester_AutoReturn_LastIssueFrame >= (now - graceFrames);
+		}
+
+		// ---- Pending STOP marker (one-shot, synced phase consumption) ----
+		int32_t Harvester_AutoReturn_PendingStopFrame { INT32_MIN };
+		__forceinline void Harv_MarkPendingStop() noexcept { Harvester_AutoReturn_PendingStopFrame = (int32_t)Unsorted::CurrentFrame; }
+		__forceinline bool Harv_HasPendingStop() const noexcept
+		{
+			return Harvester_AutoReturn_PendingStopFrame != INT32_MIN;
+		}
+
+		// ---- Runtime flags & latch ----
+		unsigned char Harvester_AutoReturn_Flags { 0 };
+		int           Harvester_AutoReturn_ConfirmFrame { INT_MIN };
+		static constexpr unsigned char HarvAuto_Flag_Suppressed = 1u << 0;
+		__forceinline bool Harvester_AutoReturn_IsSuppressed() const noexcept { return (Harvester_AutoReturn_Flags & HarvAuto_Flag_Suppressed) != 0; }
+		__forceinline void Harvester_AutoReturn_SetSuppressed(bool v) noexcept
+		{
+			if (v) { Harvester_AutoReturn_Flags |= HarvAuto_Flag_Suppressed; }
+			else { Harvester_AutoReturn_Flags &= (unsigned char)~HarvAuto_Flag_Suppressed; }
+		}
+
+		// Timers
+		// ========= Harvester Auto-Return (runtime) =========
+		CDTimerClass Harvester_AutoReturn_CombatTimer;    // set on damage, gates auto-return
+		CDTimerClass Harvester_AutoReturn_IssueCooldown;  // back-off after issuing auto-return
+		bool         Harvester_AutoReturn_Suppressed : 1; // set by Stop; cleared by manual orders
+
+
 		// Used for Passengers.SyncOwner.RevertOnExit instead of TechnoClass::InitialOwner / OriginallyOwnedByHouse,
 		// as neither is guaranteed to point to the house the TechnoClass had prior to entering transport and cannot be safely overridden.
 		HouseClass* OriginalPassengerOwner;
@@ -90,10 +132,11 @@ public:
 
 		int AttackMoveFollowerTempCount;
 
+		std::unique_ptr<GiftBox> MyGiftBox;
+
 		// ExtraFire ROF timers - not serialized, reset on load
 		std::map<WeaponTypeClass*, CDTimerClass> ExtraFireTimers;
-
-		std::unique_ptr<GiftBox> MyGiftBox;
+		
 		bool AircraftOpentoppedInitEd;
 
 		ExtData(TechnoClass* OwnerObject) : Extension<TechnoClass>(OwnerObject)
@@ -154,7 +197,11 @@ public:
 			, TintIntensityEnemies { 0 }
 			, AttackMoveFollowerTempCount { 0 }
 			, ExtraFireTimers {}
+			, Harvester_AutoReturn_CombatTimer { 90 }
+			, Harvester_AutoReturn_IssueCooldown { 200 }
+			, Harvester_AutoReturn_Flags { 0 }
 			, AircraftOpentoppedInitEd { false }
+			, Harvester_AutoReturn_ConfirmFrame { INT_MIN }
 		{ }
 
 		void OnEarlyUpdate();
@@ -193,6 +240,7 @@ public:
 		void ResetDelayedFireTimer();
 		void UpdateTintValues();
 		void UpdateAircraftOpentopped();
+		void UpdateHarvesterAutoReturn();
 
 		virtual ~ExtData() override;
 		virtual void InvalidatePointer(void* ptr, bool bRemoved) override;
@@ -276,7 +324,6 @@ public:
 	static UnitTypeClass* GetUnitTypeExtra(UnitClass* pUnit);
 	static AircraftTypeClass* GetAircraftTypeExtra(AircraftClass* pAircraft);
 	static bool CannotMove(UnitClass* pThis);
-
 	// WeaponHelpers.cpp
 	static int PickWeaponIndex(TechnoClass* pThis, TechnoClass* pTargetTechno, AbstractClass* pTarget, int weaponIndexOne, int weaponIndexTwo, bool allowFallback = true, bool allowAAFallback = true);
 	static void FireWeaponAtSelf(TechnoClass* pThis, WeaponTypeClass* pWeaponType);

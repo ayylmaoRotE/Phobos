@@ -130,11 +130,11 @@ DEFINE_HOOK(0x6F36DB, TechnoClass_WhatWeaponShouldIUse, 0x8)
 	const auto pTargetTechno = abstract_cast<TechnoClass*>(pTarget);
 	const auto pTypeExt = TechnoExt::ExtMap.Find(pThis)->TypeExtData;
 
-	// 🔧 Optimized: Precompute policy flags once (avoid re-evaluating later)
+	// Precompute policy flags once (avoid re-evaluating later)
 	const bool allowFallback = !pTypeExt->NoSecondaryWeaponFallback;
 	const bool allowAAFallback = allowFallback || pTypeExt->NoSecondaryWeaponFallback_AllowAA;
 
-	// 🔧 Optimized: Hot-cache weapon pointers once; used in shield & AA checks below
+	// Hot-cache weapon pointers once; used in shield & AA checks below.
 	WeaponTypeClass* const primaryWT = pThis->GetWeapon(0)->WeaponType;
 	WeaponTypeClass* const secondaryWT = pThis->GetWeapon(1)->WeaponType;
 
@@ -149,12 +149,11 @@ DEFINE_HOOK(0x6F36DB, TechnoClass_WhatWeaponShouldIUse, 0x8)
 		return Primary;
 
 	const auto pTargetExt = TechnoExt::ExtMap.Find(pTargetTechno);
-
 	if (const auto pShield = pTargetExt->Shield.get())
 	{
 		if (pShield->IsActive())
 		{
-			// 🔧 Optimized: Only compute secondary AA when needed and only once
+			// Only compute secondary AA when needed and only once
 			const bool secondaryIsAA = (secondaryWT && pTargetTechno->IsInAir() && secondaryWT->Projectile->AA);
 
 			if (secondaryWT && (allowFallback || (allowAAFallback && secondaryIsAA) || TechnoExt::CanFireNoAmmoWeapon(pThis, 1)))
@@ -180,16 +179,17 @@ DEFINE_HOOK(0x6F37EB, TechnoClass_WhatWeaponShouldIUse_AntiAir, 0x6)
 	GET_STACK(WeaponTypeClass*, pWeapon, STACK_OFFSET(0x18, -0x4)); // primary
 	GET(WeaponTypeClass*, pSecWeapon, EAX);                     // secondary
 
-	// 🔧 Optimized: Guard projectiles; keep logic identical when pointers are valid
+	// Guard projectiles; keep logic identical when pointers are valid
 	const bool primaryAA = (pWeapon && pWeapon->Projectile && pWeapon->Projectile->AA);
 	const bool secondaryAA = (pSecWeapon && pSecWeapon->Projectile && pSecWeapon->Projectile->AA);
 
 	if (!primaryAA && secondaryAA)
 	{
-		const auto pTargetTechno = abstract_cast<TechnoClass*>(pTarget);
-
-		if (pTargetTechno && pTargetTechno->IsInAir())
-			return Secondary;
+		if (const auto pTargetTechno = abstract_cast<TechnoClass*>(pTarget))
+		{
+			if (pTargetTechno->IsInAir())
+				return Secondary;
+		}
 	}
 
 	return Primary;
@@ -205,30 +205,32 @@ DEFINE_HOOK(0x6F3432, TechnoClass_WhatWeaponShouldIUse_Gattling, 0xA)
 	auto const pTargetTechno = abstract_cast<TechnoClass*>(pTarget);
 	const int oddWeaponIndex = 2 * pThis->CurrentGattlingStage;
 	const int evenWeaponIndex = oddWeaponIndex + 1;
-	int chosenWeaponIndex = oddWeaponIndex;
-	const int eligibleWeaponIndex = TechnoExt::PickWeaponIndex(pThis, pTargetTechno, pTarget, oddWeaponIndex, evenWeaponIndex, true);
+	int       chosenWeaponIndex = oddWeaponIndex;
 
-	if (eligibleWeaponIndex != -1)
+	const int eligible = TechnoExt::PickWeaponIndex(pThis, pTargetTechno, pTarget, oddWeaponIndex, evenWeaponIndex, true);
+	if (eligible != -1)
 	{
-		chosenWeaponIndex = eligibleWeaponIndex;
+		chosenWeaponIndex = eligible;
 	}
 	else if (pTargetTechno)
 	{
 		auto const pTargetExt = TechnoExt::ExtMap.Find(pTargetTechno);
+
+		// cache once
 		auto const pWeaponOdd = pThis->GetWeapon(oddWeaponIndex)->WeaponType;
 		auto const pWeaponEven = pThis->GetWeapon(evenWeaponIndex)->WeaponType;
-		bool skipRemainingChecks = false;
 
+		bool skipFurther = false;
 		if (const auto pShield = pTargetExt->Shield.get())
 		{
 			if (pShield->IsActive() && !pShield->CanBeTargeted(pWeaponOdd))
 			{
 				chosenWeaponIndex = evenWeaponIndex;
-				skipRemainingChecks = true;
+				skipFurther = true;
 			}
 		}
 
-		if (!skipRemainingChecks)
+		if (!skipFurther)
 		{
 			if (GeneralUtils::GetWarheadVersusArmor(pWeaponOdd->Warhead, pTargetTechno->GetTechnoType()->Armor) == 0.0)
 			{
@@ -236,21 +238,15 @@ DEFINE_HOOK(0x6F3432, TechnoClass_WhatWeaponShouldIUse_Gattling, 0xA)
 			}
 			else
 			{
-				auto const landType = pTargetTechno->GetCell()->LandType;
+				const auto landType = pTargetTechno->GetCell()->LandType;
 				const bool isOnWater = (landType == LandType::Water || landType == LandType::Beach) && !pTargetTechno->IsInAir();
 
 				if (!pTargetTechno->OnBridge && isOnWater && pThis->SelectNavalTargeting(pTargetTechno) == 2)
-				{
 					chosenWeaponIndex = evenWeaponIndex;
-				}
 				else if (pTargetTechno->IsInAir() && !pWeaponOdd->Projectile->AA && pWeaponEven->Projectile->AA)
-				{
 					chosenWeaponIndex = evenWeaponIndex;
-				}
 				else if (pThis->GetTechnoType()->LandTargeting == LandTargetingType::Land_Secondary)
-				{
 					chosenWeaponIndex = evenWeaponIndex;
-				}
 			}
 		}
 	}
@@ -276,6 +272,7 @@ DEFINE_HOOK(0x5218F3, InfantryClass_WhatWeaponShouldIUse_DeployFireWeapon, 0x6)
 #pragma endregion
 
 #pragma region TechnoClass_GetFireError
+// TechnoClass::CanFire — full logic, cached lookups (keeps Berzerk & friends)
 DEFINE_HOOK(0x6FC339, TechnoClass_CanFire, 0x6)
 {
 	enum { CannotFire = 0x6FCB7E };
@@ -287,7 +284,7 @@ DEFINE_HOOK(0x6FC339, TechnoClass_CanFire, 0x6)
 	//  derive from pTarget (RTTI-checked), not from EBP
 	TechnoClass* const pTargetTechno = abstract_cast<TechnoClass*>(pTarget);
 
-	// 🔧 Optimized: cache hot pointers once (null-safe)
+	// cache hot pointers once (null-safe)
 	auto* const pType = pThis->GetTechnoType();
 	auto* const pProj = pWeapon ? pWeapon->Projectile : nullptr;
 	auto* const pWH = pWeapon ? pWeapon->Warhead : nullptr;
@@ -302,7 +299,6 @@ DEFINE_HOOK(0x6FC339, TechnoClass_CanFire, 0x6)
 
 	//  TransactMoney gate (unchanged semantics)
 	const int trans = pWHExt->TransactMoney;
-
 	if (trans < 0 && pThis->Owner->Available_Money() < -trans)
 		return CannotFire;
 
@@ -316,7 +312,7 @@ DEFINE_HOOK(0x6FC339, TechnoClass_CanFire, 0x6)
 		return CannotFire;
 	}
 
-	// 🗺 Optimized: derive target cell once (keep your "ignore air techno cell" rule)
+	// 🗺 derive target cell once (keep your “ignore air techno cell” rule)
 	CellClass* pTargetCell = nullptr;
 	if (pTarget)
 	{
@@ -334,10 +330,14 @@ DEFINE_HOOK(0x6FC339, TechnoClass_CanFire, 0x6)
 	//  cell-level CanTarget filter (kept)
 	if (!pWeaponExt->SkipWeaponPicking && pTargetCell
 		&& !EnumFunctions::IsCellEligible(pTargetCell, pWeaponExt->CanTarget, true, true))
+	{
 		return CannotFire;
+	}
 
+	//  techno-level filters (Berzerk, houses, health, AEs, Airstrike)
 	if (pTargetTechno)
 	{
+		// Berzerk targeting (kept)
 		if (pThis->Berzerk
 			&& !EnumFunctions::CanTargetHouse(RulesExt::Global()->BerzerkTargeting, pThis->Owner, pTargetTechno->Owner))
 		{
@@ -355,16 +355,23 @@ DEFINE_HOOK(0x6FC339, TechnoClass_CanFire, 0x6)
 			}
 		}
 
+		// Airstrike warhead gates (kept)
 		if (pWH->Airstrike)
 		{
 			if (!EnumFunctions::IsTechnoEligible(pTargetTechno, pWHExt->AirstrikeTargets))
 				return CannotFire;
 
-			if (!TechnoExt::ExtMap.Find(pTargetTechno)->TypeExtData->AllowAirstrike.Get(pTargetTechno->AbstractFlags & AbstractFlags::Foot ? true : static_cast<BuildingClass*>(pTargetTechno)->Type->CanC4))
+			const auto pTgtExtType = TechnoExt::ExtMap.Find(pTargetTechno)->TypeExtData;
+			const bool fallback = (pTargetTechno->AbstractFlags & AbstractFlags::Foot)
+				? true
+				: static_cast<BuildingClass*>(pTargetTechno)->Type->CanC4;
+
+			if (!pTgtExtType->AllowAirstrike.Get(fallback))
 				return CannotFire;
 		}
 	}
 
+	// continue into the original routine
 	return 0;
 }
 
@@ -501,23 +508,25 @@ DEFINE_HOOK(0x6FDDC0, TechnoClass_FireAt_BeforeTruelyFire, 0x6)
 	enum { SkipFiring = 0x6FDE03 };
 
 	GET(TechnoClass* const, pThis, ESI);
-//	GET(AbstractClass* const, pTarget, EDI);
 	GET(WeaponTypeClass* const, pWeapon, EBX);
 	GET_BASE(int, weaponIndex, 0xC);
 
-	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
-	auto const pExt = TechnoExt::ExtMap.Find(pThis);
+	auto* const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
+	auto* const pExt = TechnoExt::ExtMap.Find(pThis);
 	auto& timer = pExt->DelayedFireTimer;
 
+	// if we changed weapon, reset the delay state
 	if (pExt->DelayedFireWeaponIndex >= 0 && pExt->DelayedFireWeaponIndex != weaponIndex)
 		pExt->ResetDelayedFireTimer();
 
-	if (pWeaponExt->DelayedFire_Duration.isset() && (!pThis->Transporter || !pWeaponExt->DelayedFire_SkipInTransport))
+	if (pWeaponExt->DelayedFire_Duration.isset()
+		&& (!pThis->Transporter || !pWeaponExt->DelayedFire_SkipInTransport))
 	{
-		auto const rtti = pThis->WhatAmI();
+		const auto rtti = pThis->WhatAmI();
 
-		if (pWeaponExt->DelayedFire_PauseFiringSequence && (rtti == AbstractType::Infantry
-			|| (rtti == AbstractType::Unit && !pThis->HasTurret() && !pThis->GetTechnoType()->Voxel)))
+		if (pWeaponExt->DelayedFire_PauseFiringSequence
+			&& (rtti == AbstractType::Infantry
+				|| (rtti == AbstractType::Unit && !pThis->HasTurret() && !pThis->GetTechnoType()->Voxel)))
 		{
 			return 0;
 		}
@@ -529,37 +538,60 @@ DEFINE_HOOK(0x6FDDC0, TechnoClass_FireAt_BeforeTruelyFire, 0x6)
 
 			if (!timer.HasStarted())
 			{
+				// start the delay
 				pExt->DelayedFireWeaponIndex = weaponIndex;
 				timer.Start(Math::max(GeneralUtils::GetRangedRandomOrSingleValue(pWeaponExt->DelayedFire_Duration), 0));
-				auto pAnimType = pWeaponExt->DelayedFire_Animation;
 
-				if (pThis->Transporter && pWeaponExt->DelayedFire_OpenToppedAnimation.isset())
-					pAnimType = pWeaponExt->DelayedFire_OpenToppedAnimation;
+				// 🔒 spam guard: only create the delayed-fire anim if we don't already track one
+				// clean up a stale pointer first (if the anim limbo'd/died)
+				if (pExt->CurrentDelayedFireAnim && pExt->CurrentDelayedFireAnim->InLimbo)
+				{
+					pExt->CurrentDelayedFireAnim = nullptr;
+				}
 
-				auto firingCoords = pThis->GetWeapon(weaponIndex)->FLH;
+				if (pExt->CurrentDelayedFireAnim == nullptr)
+				{
+					auto pAnimType = pWeaponExt->DelayedFire_Animation;
+					if (pThis->Transporter && pWeaponExt->DelayedFire_OpenToppedAnimation.isset())
+						pAnimType = pWeaponExt->DelayedFire_OpenToppedAnimation;
 
-				if (pWeaponExt->DelayedFire_AnimOffset.isset())
-					firingCoords = pWeaponExt->DelayedFire_AnimOffset;
+					auto* const pWS = pThis->GetWeapon(weaponIndex);
+					auto        firingCoords = pWS ? pWS->FLH : CoordStruct::Empty;
 
-				TechnoExt::CreateDelayedFireAnim(pThis, pAnimType, weaponIndex, pWeaponExt->DelayedFire_AnimIsAttached, pWeaponExt->DelayedFire_CenterAnimOnFirer,
-					pWeaponExt->DelayedFire_RemoveAnimOnNoDelay, pWeaponExt->DelayedFire_AnimOnTurret, firingCoords);
+					if (pWeaponExt->DelayedFire_AnimOffset.isset())
+						firingCoords = pWeaponExt->DelayedFire_AnimOffset;
+
+					TechnoExt::CreateDelayedFireAnim(
+						pThis, pAnimType, weaponIndex,
+						pWeaponExt->DelayedFire_AnimIsAttached,
+						pWeaponExt->DelayedFire_CenterAnimOnFirer,
+						pWeaponExt->DelayedFire_RemoveAnimOnNoDelay,
+						pWeaponExt->DelayedFire_AnimOnTurret,
+						firingCoords
+					);
+					// note: CreateDelayedFireAnim should set pExt->CurrentDelayedFireAnim internally
+				}
 
 				return SkipFiring;
 			}
 			else
 			{
+				// delay elapsed; fire now, and reset for next time
 				pExt->ResetDelayedFireTimer();
+				// optional: let CreateDelayedFireAnim cleanup clear the pointer later
+				if (pExt->CurrentDelayedFireAnim && pExt->CurrentDelayedFireAnim->InLimbo)
+				{
+					pExt->CurrentDelayedFireAnim = nullptr;
+				}
 			}
 		}
 	}
 
 	if (pExt->AE.HasOnFireDiscardables)
 	{
-		for (const auto& attachEffect : pExt->AttachedEffects)
-		{
-			if ((attachEffect->GetType()->DiscardOn & DiscardCondition::Firing) != DiscardCondition::None)
-				attachEffect->ShouldBeDiscarded = true;
-		}
+		for (const auto& ae : pExt->AttachedEffects)
+			if ((ae->GetType()->DiscardOn & DiscardCondition::Firing) != DiscardCondition::None)
+				ae->ShouldBeDiscarded = true;
 	}
 
 	return 0;
@@ -867,29 +899,6 @@ DEFINE_HOOK(0x6F3AEB, TechnoClass_GetFLH, 0x6)
 }
 
 #pragma endregion
-
-// Fix OpenTopped aircraft getting stuck due to zero weapon range
-DEFINE_HOOK(0x701393, TechnoClass_GetWeaponRange_OpenToppedAircraft, 0x6)
-{
-	GET(TechnoClass*, pThis, ECX);
-	GET(int, result, EAX);
-
-	const auto pThisType = pThis->GetTechnoType();
-
-	// Fix for OpenTopped aircraft with zero range causing them to get stuck
-	if (result == 0 && pThis->WhatAmI() == AbstractType::Aircraft && pThisType->OpenTopped)
-	{
-		result = pThisType->GuardRange;
-		if (result == 0)
-		{
-			// Fallback to a reasonable default range if GuardRange is also 0
-			result = 5 * Unsorted::LeptonsPerCell; // 5 cells default
-		}
-	}
-
-	R->EAX(result);
-	return 0;
-}
 
 // Basically a hack to make game and Ares pick laser properties from non-Primary weapons.
 DEFINE_HOOK(0x70E1A0, TechnoClass_GetTurretWeapon_LaserWeapon, 0x5)

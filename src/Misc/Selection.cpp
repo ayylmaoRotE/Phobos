@@ -60,14 +60,18 @@ public:
 	static bool Tactical_IsHighPriorityInRect(TacticalClass* pThis, LTRBStruct* rect)
 	{
 		for (const auto& selected : Array)
+		{
 			if (Tactical_IsInSelectionRect(pThis, rect, selected) && ObjectClass_IsSelectable(selected.Object))
 			{
+				// Only check Techno entries
 				if ((selected.Object->AbstractFlags & AbstractFlags::Techno) != AbstractFlags::None)
 				{
+					// Avoid ExtMap lookup for non-Techno objects entirely (cheap flag check above).
 					if (!TechnoExt::ExtMap.Find(static_cast<TechnoClass*>(selected.Object))->TypeExtData->LowSelectionPriority)
 						return true;
 				}
 			}
+		}
 
 		return false;
 	}
@@ -82,12 +86,30 @@ public:
 
 		for (const auto& selected : Array)
 		{
-			if (Tactical_IsInSelectionRect(pThis, pRect, selected))
-			{
-				const auto pObject = selected.Object;
-				const auto pTechnoType = pObject->GetTechnoType(); // Returns nullptr on non techno objects
+			if (!Tactical_IsInSelectionRect(pThis, pRect, selected))
+				continue;
 
-				if (auto const pTypeExt = TechnoTypeExt::ExtMap.TryFind(pTechnoType)) // If pTechnoType is nullptr so will be pTypeExt
+			auto* const pObject = selected.Object;
+
+			// Cheap owner/flag gate first (avoids later work)
+			// (Note: this matches vanilla gates used later; we still honor building undeploy check below.)
+			HouseClass* const pOwner = pObject->GetOwningHouse();
+			if (!pOwner || !pOwner->IsControlledByCurrentPlayer())
+			{
+				if (check_callback)
+					(*check_callback)(pObject); // preserve callback semantics even for non-owned objects
+				continue;
+			}
+
+			TechnoTypeClass* const pTechnoType =
+				((pObject->AbstractFlags & AbstractFlags::Techno) != AbstractFlags::None)
+				? pObject->GetTechnoType()
+				: nullptr;
+
+			// Only query ExtMap if we actually have a techno type (avoids map lookup on rubble/debris etc.)
+			if (pTechnoType)
+			{
+				if (auto const pTypeExt = TechnoTypeExt::ExtMap.TryFind(pTechnoType))
 				{
 					if (bPriorityFiltering && pTypeExt->LowSelectionPriority)
 						continue;
@@ -98,21 +120,20 @@ public:
 						continue;
 					}
 				}
+			}
 
-				if (check_callback)
-				{
-					(*check_callback)(pObject);
-				}
-				else
-				{
-					const auto pBldType = abstract_cast<BuildingTypeClass*, true>(pTechnoType);
-					const auto pOwner = pObject->GetOwningHouse();
+			if (check_callback)
+			{
+				(*check_callback)(pObject);
+			}
+			else
+			{
+				const auto pBldType = abstract_cast<BuildingTypeClass*, true>(pTechnoType);
 
-					if (pOwner && pOwner->IsControlledByCurrentPlayer() && pObject->CanBeSelected()
-						&& (!pBldType || (pBldType->UndeploysInto && pBldType->IsVehicle())))
-					{
-						Unsorted::MoveFeedback = !pObject->Select();
-					}
+				if (pObject->CanBeSelected()
+					&& (!pBldType || (pBldType->UndeploysInto && pBldType->IsVehicle())))
+				{
+					Unsorted::MoveFeedback = !pObject->Select();
 				}
 			}
 		}
@@ -137,7 +158,9 @@ public:
 
 			LTRBStruct rect { nLeft , nTop, nRight - nLeft + 1, nBottom - nTop + 1 };
 
-			const bool bPriorityFiltering = Phobos::Config::PrioritySelectionFiltering && Tactical_IsHighPriorityInRect(pThis, &rect);
+			const bool bPriorityFiltering =
+				Phobos::Config::PrioritySelectionFiltering && Tactical_IsHighPriorityInRect(pThis, &rect);
+
 			Tactical_SelectFiltered(pThis, &rect, check_callback, bPriorityFiltering);
 
 			pThis->Band.Left = 0;

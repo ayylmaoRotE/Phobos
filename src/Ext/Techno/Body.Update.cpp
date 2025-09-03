@@ -18,7 +18,21 @@
 #include <Ext/Scenario/Body.h>
 #include <Utilities/EnumFunctions.h>
 #include <Utilities/AresFunctions.h>
+#include <UnitClass.h>
+#include <MissionClass.h>
+#include <GeneralDefinitions.h>
+#include <Unsorted.h>
+#include <Ext/Rules/Body.h>
+#include <Ext/TechnoType/Body.h>
 
+#include <algorithm> // erase/remove, clamp, max, min
+#include <cmath>     // std::round
+
+static __forceinline bool IsMiner(const UnitClass* u) noexcept
+{
+	const auto t = u->Type;
+	return (t && (t->Harvester || t->Weeder));
+}
 
 // TechnoClass_AI_0x6F9E50
 // It's not recommended to do anything more here it could have a better place for performance consideration
@@ -44,6 +58,8 @@ void TechnoExt::ExtData::OnEarlyUpdate()
 	this->UpdateRecountBurst();
 	this->UpdateRearmInEMPState();
 
+	this->UpdateHarvesterAutoReturn();
+
 	if (this->AttackMoveFollowerTempCount)
 		this->AttackMoveFollowerTempCount--;
 }
@@ -53,128 +69,125 @@ void TechnoExt::ExtData::ApplyInterceptor()
 	const auto pThis = this->OwnerObject();
 	const auto pTypeExt = this->TypeExtData;
 	const auto pInterceptorType = pTypeExt->InterceptorType.get();
+	if (!pInterceptorType) return;
 
-	if (!pInterceptorType)
-		return;
-
-	const auto pTarget = pThis->Target;
-
-	if (pTarget)
+	// keep current bullet target only if it's LOCKED
+	if (const auto pTarget = pThis->Target)
 	{
 		if (pTarget->WhatAmI() != AbstractType::Bullet)
 			return;
 
 		const auto pTargetExt = BulletExt::ExtMap.Find(static_cast<BulletClass*>(pTarget));
+		const bool isLocked = (pTargetExt->InterceptedStatus & InterceptedStatus::Locked) != InterceptedStatus::None;
 
-		if ((pTargetExt->InterceptedStatus & InterceptedStatus::Locked) == InterceptedStatus::None)
+		// If it's locked, keep it (exit). If it's not locked, fall through and search for a better target.
+		if (isLocked)
 			return;
 	}
 
 	const int count = BulletClass::Array.Count;
+	if (this->IsBurrowed || !count) return;
 
-	if (this->IsBurrowed || !count)
-		return;
-
-	BulletClass* pTargetBullet = nullptr;
+	// caches
+	const auto  pOwner = pThis->Owner;
+	const auto  location = pThis->Location;
+	const auto  canTargetHouses = pInterceptorType->CanTargetHouses;
 	const double guardRange = pInterceptorType->GuardRange.Get(pThis);
 	const double guardRangeSq = guardRange * guardRange;
-	const double minguardRange = pInterceptorType->MinimumGuardRange.Get(pThis);
-	const double minguardRangeSq = minguardRange * minguardRange;
-	const auto pOwner = pThis->Owner;
-	const auto location = pThis->Location;
-	const auto canTargetHouses = pInterceptorType->CanTargetHouses;
-	// Interceptor weapon is always fixed
-	const auto pWeapon = pThis->GetWeapon(pInterceptorType->Weapon)->WeaponType;
-	const auto pWH = pWeapon->Warhead;
+	const double minGuardRange = pInterceptorType->MinimumGuardRange.Get(pThis);
+	const double minGuardRangeSq = minGuardRange * minGuardRange;
 
-	// DO NOT iterate BulletExt::ExtMap here, the order of items is not deterministic
-	// so it can differ across players throwing target management out of sync.
+	// interceptor weapon (guarded)
+	auto* const pWS = pThis->GetWeapon(pInterceptorType->Weapon);
+	if (!pWS || !pWS->WeaponType || !pWS->WeaponType->Warhead) return;
+	const auto  pWeapon = pWS->WeaponType;
+	const auto  pWH = pWeapon->Warhead;
+
+	BulletClass* pOptionalTargetBullet = nullptr;
+
+	// perf guard: skip 2nd pass if bullet count is very high
+	constexpr int kSecondPassSkipThreshold = 512;
+	const bool skipSecondPass = (count > kSecondPassSkipThreshold);
+
 	int i = 0;
-
-	for ( ; i < count; ++i)
+	for (; i < count; ++i)
 	{
 		const auto& pBullet = BulletClass::Array.GetItem(i);
-		const auto pBulletExt = BulletExt::ExtMap.Find(pBullet);
-		const auto pBulletTypeExt = pBulletExt->TypeExtData;
+		const auto  pBulletExt = BulletExt::ExtMap.Find(pBullet);
+		const auto  pBulletTypeExt = pBulletExt->TypeExtData;
 
 		if (!pBulletTypeExt->Interceptable || pBullet->SpawnNextAnim)
 			continue;
 
-		const auto distanceSq = pBullet->Location.DistanceFromSquared(location);
-
-		if (distanceSq > guardRangeSq || distanceSq < minguardRangeSq)
+		const auto distSq = pBullet->Location.DistanceFromSquared(location);
+		if (distSq > guardRangeSq || distSq < minGuardRangeSq)
 			continue;
 
 		if (pBulletTypeExt->Armor.isset())
 		{
 			const double versus = GeneralUtils::GetWarheadVersusArmor(pWH, pBulletTypeExt->Armor.Get());
-
 			if (versus == 0.0)
 				continue;
 		}
 
 		const auto bulletOwner = pBullet->Owner ? pBullet->Owner->Owner : pBulletExt->FirerHouse;
-
 		if (!EnumFunctions::CanTargetHouse(canTargetHouses, pOwner, bulletOwner))
 			continue;
 
+		// prefer a free bullet; otherwise remember the first targeted/locked one
 		if (pBulletExt->InterceptedStatus & (InterceptedStatus::Targeted | InterceptedStatus::Locked))
 		{
-			// Set as optional target
-			pTargetBullet = pBullet;
+			pOptionalTargetBullet = pBullet;
 			break;
 		}
 
-		// Establish target
 		pThis->SetTarget(pBullet);
 		return;
 	}
 
-	// Loop ends and there is no target
-	if (!pTargetBullet)
+	if (!pOptionalTargetBullet)
 		return;
 
-	// There is an optional target, but it is still possible to continue checking for more suitable target
-	for ( ; i < count; ++i)
+	if (skipSecondPass)
+	{
+		pThis->SetTarget(pOptionalTargetBullet);
+		return;
+	}
+
+	for (; i < count; ++i)
 	{
 		const auto& pBullet = BulletClass::Array.GetItem(i);
-		const auto pBulletExt = BulletExt::ExtMap.Find(pBullet);
-
-		if (pBulletExt->InterceptedStatus & (InterceptedStatus::Targeted | InterceptedStatus::Locked))
-			continue;
-
-		const auto pBulletTypeExt = pBulletExt->TypeExtData;
+		const auto  pBulletExt = BulletExt::ExtMap.Find(pBullet);
+		const auto  pBulletTypeExt = pBulletExt->TypeExtData;
 
 		if (!pBulletTypeExt->Interceptable || pBullet->SpawnNextAnim)
 			continue;
 
-		const auto distanceSq = pBullet->Location.DistanceFromSquared(location);
-
-		if (distanceSq > guardRangeSq || distanceSq < minguardRangeSq)
+		const auto distSq = pBullet->Location.DistanceFromSquared(location);
+		if (distSq > guardRangeSq || distSq < minGuardRangeSq)
 			continue;
 
 		if (pBulletTypeExt->Armor.isset())
 		{
 			const double versus = GeneralUtils::GetWarheadVersusArmor(pWH, pBulletTypeExt->Armor.Get());
-
 			if (versus == 0.0)
 				continue;
 		}
 
 		const auto bulletOwner = pBullet->Owner ? pBullet->Owner->Owner : pBulletExt->FirerHouse;
-
 		if (!EnumFunctions::CanTargetHouse(canTargetHouses, pOwner, bulletOwner))
 			continue;
 
-		// Establish target
-		pThis->SetTarget(pBullet);
-		return;
+		if ((pBulletExt->InterceptedStatus & (InterceptedStatus::Targeted | InterceptedStatus::Locked)) == InterceptedStatus::None)
+		{
+			pThis->SetTarget(pBullet);
+			return;
+		}
 	}
 
-	// There is no more suitable target, establish optional target
-	if (pTargetBullet)
-		pThis->SetTarget(pTargetBullet);
+	pThis->SetTarget(pOptionalTargetBullet);
 }
+
 
 void TechnoExt::ExtData::DepletedAmmoActions()
 {
@@ -281,6 +294,125 @@ bool TechnoExt::ExtData::CheckDeathConditions(bool isInLimbo)
 	}
 
 	return false;
+}
+
+void TechnoExt::ExtData::UpdateHarvesterAutoReturn()
+{
+	auto* const pTechno = this->OwnerObject();
+	auto* const pUnit = abstract_cast<UnitClass*>(pTechno);
+	if (!pUnit) { return; }
+
+	const auto* typeExt = this->TypeExtData;
+	if (!typeExt || !typeExt->Harvester_AutoReturn_GlobalEligible) { return; }
+
+	const auto rules = RulesExt::Global();
+	if (!rules || !rules->Harvester_AutoReturn_Enable) { return; }
+
+	// --- Apply pending STOP in synced phase (deterministic across peers) ---
+	if (this->Harv_HasPendingStop())
+	{
+		// consume the one-shot per-frame mark
+		this->Harvester_AutoReturn_PendingStopFrame = INT32_MIN;
+
+		// latch suppression and stamp a STOP mark (persisted)
+		this->Harvester_AutoReturn_SetSuppressed(true);
+		this->Harv_MarkStopSuppress();
+
+		// Reset idle baseline identically on all peers
+		pUnit->CurrentMissionStartTime = Unsorted::CurrentFrame;
+
+		// Kill any in-flight confirm so nothing fires “next frame”
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
+	}
+
+	// --- Global & per-unit suppression guards ---
+	if (rules->Harvester_AutoReturn_SuppressOnStop && this->Harvester_AutoReturn_IsSuppressed())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
+		return;
+	}
+	if (this->Harv_IsSuppressed())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
+		return;
+	}
+
+	// Avoid decisions on the same frame we toggled STOP/CLEAR or (re)started Guard
+	const int nowFrame = (int)Unsorted::CurrentFrame;
+	if (this->Harv_SuppressLastStopFrame == nowFrame) { this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return; }
+	if (pUnit->CurrentMissionStartTime == nowFrame) { this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return; }
+
+	if (pUnit->InLimbo || pUnit->IsSinking || pUnit->IsBeingWarpedOut())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
+		return;
+	}
+	if (pUnit->Transporter || pUnit->IsInAir())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+	}
+
+	// Must be idling on guard for auto-return to be considered
+	auto const mission = pUnit->GetCurrentMission();
+	if (!(mission == Mission::Guard || mission == Mission::Area_Guard))
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+	}
+
+	// --- Out-of-combat & cooldown gates ---
+	if (rules->Harvester_AutoReturn_OutOfCombatTicks > 0
+		&& !this->Harvester_AutoReturn_CombatTimer.Expired())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+	}
+	if (!this->Harvester_AutoReturn_IssueCooldown.Expired())
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+	}
+
+	// --- IdleTicks requirement ---
+	{
+		const int idleReq = std::max(0, rules->Harvester_AutoReturn_IdleTicks.Get());
+		if (idleReq > 0)
+		{
+			const int elapsed = Unsorted::CurrentFrame - pUnit->CurrentMissionStartTime;
+			if (elapsed < idleReq)
+			{
+				this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+			}
+		}
+	}
+
+	// --- Cargo percentage requirement ---
+	{
+		const int cargoPct = (int)(pUnit->GetStoragePercentage() * 100.0 + 0.5);
+		const int needPct = std::clamp(rules->Harvester_AutoReturn_CargoPercent.Get(), 0, 100);
+		if (cargoPct < needPct)
+		{
+			this->Harvester_AutoReturn_ConfirmFrame = INT_MIN; return;
+		}
+	}
+
+	// --- Two-frame confirmation to avoid STOP races ---
+	const int now = Unsorted::CurrentFrame;
+	if (this->Harvester_AutoReturn_ConfirmFrame != (now - 1))
+	{
+		this->Harvester_AutoReturn_ConfirmFrame = now; // first pass, arm confirmation
+		return;
+	}
+
+	// Confirmed on consecutive frames: issue deterministically
+	this->Harvester_AutoReturn_ConfirmFrame = INT_MIN;
+	pUnit->QueueMission(Mission::Harvest, true);
+
+	// “just issued” stamp (protects manual-harvest clear hook)
+	this->Harvester_AutoReturn_LastIssueFrame = (int32_t)Unsorted::CurrentFrame;
+
+	// Back-off a bit after issuing to prevent thrash
+	if (const int cd = std::max(0, rules->Harvester_AutoReturn_IssueCooldownTicks.Get()); cd > 0)
+	{
+		this->Harvester_AutoReturn_IssueCooldown.Start(cd);
+	}
 }
 
 void TechnoExt::ExtData::EatPassengers()
@@ -879,33 +1011,33 @@ void TechnoExt::ExtData::UpdateTypeData(TechnoTypeClass* pCurrentType)
 
 	auto checkWeapon = [&maxCapture, &infiniteCapture, &hasTemporal,
 		&hasAirstrike, &hasLocomotor, &hasParasite](WeaponTypeClass* pWeaponType)
-	{
-		if (!pWeaponType)
-			return;
-
-		const auto pWH = pWeaponType->Warhead;
-
-		if (pWH->MindControl)
 		{
-			if (pWeaponType->Damage > maxCapture)
-				maxCapture = pWeaponType->Damage;
+			if (!pWeaponType)
+				return;
 
-			if (pWeaponType->InfiniteMindControl)
-				infiniteCapture = true;
-		}
+			const auto pWH = pWeaponType->Warhead;
 
-		if (pWH->Temporal)
-			hasTemporal = true;
+			if (pWH->MindControl)
+			{
+				if (pWeaponType->Damage > maxCapture)
+					maxCapture = pWeaponType->Damage;
 
-		if (pWH->Airstrike)
-			hasAirstrike = true;
+				if (pWeaponType->InfiniteMindControl)
+					infiniteCapture = true;
+			}
 
-		if (pWH->IsLocomotor)
-			hasLocomotor = true;
+			if (pWH->Temporal)
+				hasTemporal = true;
 
-		if (pWH->Parasite)
-			hasParasite = true;
-	};
+			if (pWH->Airstrike)
+				hasAirstrike = true;
+
+			if (pWH->IsLocomotor)
+				hasLocomotor = true;
+
+			if (pWH->Parasite)
+				hasParasite = true;
+		};
 
 	for (int i = 0; i < TechnoTypeClass::MaxWeapons; i++)
 	{
@@ -1691,19 +1823,25 @@ void TechnoExt::ExtData::UpdateKeepTargetOnMove()
 
 	const int weaponIndex = pThis->SelectWeapon(pThis->Target);
 
-	if (auto const pWeapon = pThis->GetWeapon(weaponIndex)->WeaponType)
+	if (auto const pWS = pThis->GetWeapon(weaponIndex))
 	{
-		const int extraDistance = static_cast<int>(pTypeExt->KeepTargetOnMove_ExtraDistance.Get());
-		const int range = pWeapon->Range;
-		pWeapon->Range += extraDistance; // Temporarily adjust weapon range based on the extra distance.
-
-		if (!pThis->IsCloseEnough(pThis->Target, weaponIndex))
+		if (auto const pWeapon = pWS->WeaponType)
 		{
-			pThis->SetTarget(nullptr);
-			this->KeepTargetOnMove = false;
+			const int extra = (int)pTypeExt->KeepTargetOnMove_ExtraDistance.Get();
+			// First: the engine’s precise check
+			bool inRange = pThis->IsCloseEnough(pThis->Target, weaponIndex);
+			if (!inRange)
+			{
+				// Second-chance: a simple distance band without mutating global WeaponType
+				const int dist = pThis->DistanceFrom(pThis->Target);
+				const int range = pWeapon->Range + std::max(0, extra);
+				if (dist > range)
+				{
+					pThis->SetTarget(nullptr);
+					this->KeepTargetOnMove = false;
+				}
+			}
 		}
-
-		pWeapon->Range = range;
 	}
 }
 

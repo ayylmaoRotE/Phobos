@@ -36,8 +36,8 @@ namespace Savegame
 		value.load(stmReader, registerForChange);
 	};
 
-	#pragma warning(push)
-	#pragma warning(disable: 4702) // MSVC isn't smart enough and yells about unreachable code
+#pragma warning(push)
+#pragma warning(disable: 4702) // MSVC isn't smart enough and yells about unreachable code
 
 	template <typename T>
 	bool ReadPhobosStream(PhobosStreamReader& stm, T& value, bool registerForChange)
@@ -65,7 +65,7 @@ namespace Savegame
 		return item.WriteToStream(stm, value);
 	}
 
-	#pragma warning(pop)
+#pragma warning(pop)
 
 	template <typename T>
 	T* RestoreObject(PhobosStreamReader& Stm, bool RegisterForChange)
@@ -475,7 +475,7 @@ namespace Savegame
 			{
 				TKey key;
 				std::vector<TValue> vals;
-				if (!(Savegame::ReadPhobosStream(Stm, key, RegisterForChange)&& Savegame::ReadPhobosStream(Stm, vals, RegisterForChange)))
+				if (!(Savegame::ReadPhobosStream(Stm, key, RegisterForChange) && Savegame::ReadPhobosStream(Stm, vals, RegisterForChange)))
 				{
 					return false;
 				}
@@ -488,9 +488,9 @@ namespace Savegame
 		{
 			Stm.Save(Value.size());
 
-			for (const auto& [key,vals] : Value)
+			for (const auto& [key, vals] : Value)
 			{
-				if (!(Savegame::WritePhobosStream(Stm, key) && Savegame::WritePhobosStream(Stm,vals)))
+				if (!(Savegame::WritePhobosStream(Stm, key) && Savegame::WritePhobosStream(Stm, vals)))
 				{
 					return false;
 				}

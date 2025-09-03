@@ -144,69 +144,60 @@ DEFINE_HOOK(0x6A99B7, TabCameoListClass_Draw_SuperDarken, 0x5)
 
 	bool darken = false;
 
-	// Cheap early guards + hoisted lookups
 	if (auto* const pPlayer = HouseClass::CurrentPlayer)
 	{
 		if (auto* const pSW = pPlayer->Supers.GetItem(idxSW))
 		{
-			if (auto* const pSWType = pSW->Type)
+			// Only add *extra* darkening when the SW is already ready.
+			// The engine already shades non-ready SWs.
+			if (pSW->IsReady)
 			{
-				if (auto* const pSWExt = SWTypeExt::ExtMap.Find(pSWType))
+				if (auto* const pType = pSW->Type)
 				{
-
-					// Only apply extra darken rules when the SW is otherwise "ready".
-					// Base engine already shades when not ready.
-					if (pSW->IsReady)
+					if (auto* const pSWExt = SWTypeExt::ExtMap.TryFind(pType))
 					{
-
-						// Requirement 1: Money (Ares original)
-						if (!pSW->Owner->CanTransactMoney(pSWExt->Money_Amount))
+						// Money gate (only if non-zero)
+						if (pSWExt->Money_Amount != 0
+							&& !pSW->Owner->CanTransactMoney(pSWExt->Money_Amount))
 						{
 							darken = true;
 						}
 
-						// Requirement 2/3: Battle / Commander Points
-						if (auto* const pOwnerExt = HouseExt::ExtMap.Find(pSW->Owner))
+						// BP/CP gates (only if non-zero and HouseExt exists)
+						if (!darken)
 						{
-							if (!darken && pSWExt->BattlePoints_Amount != 0 &&
-								!pOwnerExt->CanTransactBattlePoints(pSWExt->BattlePoints_Amount))
+							if (auto* const pOwnerExt = HouseExt::ExtMap.TryFind(pSW->Owner))
 							{
-								darken = true;
+								if (pSWExt->BattlePoints_Amount != 0
+									&& !pOwnerExt->CanTransactBattlePoints(pSWExt->BattlePoints_Amount))
+								{
+									darken = true;
+								}
+								if (!darken
+									&& pSWExt->CommanderPoints_Amount != 0
+									&& !pOwnerExt->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount))
+								{
+									darken = true;
+								}
 							}
-							if (!darken && pSWExt->CommanderPoints_Amount != 0 &&
-								!pOwnerExt->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount))
-							{
-								darken = true;
-							}
-						}
-						else
-						{
-							// Missing house ext? play it safe.
-							darken = true;
+							// No HouseExt? Don’t force-darken—just skip BP/CP gating.
 						}
 
-						// Requirement 4: AuxTechnos / other availability gates
+						// AuxTechnos / custom availability
 						if (!darken && !pSWExt->IsAvailable(pSW->Owner))
 						{
 							darken = true;
 						}
 					}
-				}
-				else
-				{
-					// No extension found for this type → disable to avoid edge crashes/misfires
-					darken = true;
+					// No SWTypeExt: leave vanilla behavior (don’t force-darken).
 				}
 			}
 		}
 	}
 
-	// BL = darken flag (engine uses it to shade the cameo)
+	// BL = darken flag; engine uses it to shade & disable the cameo
 	R->BL(darken);
 	return 0;
 }
-
-
-
 
 #pragma endregion

@@ -244,7 +244,7 @@ void WarheadTypeExt::ExtData::ReloadAllHitAnimData(CCINIClass* pINI)
 					if (auto pAnimType = AnimTypeClass::FindOrAllocate(tempBuffer))
 					{
 						pWHExt->ArmorHitAnim[armorName] = pAnimType;
-						// Debug::Log("DEBUG: Loaded %s HitAnim.%s=%s\n", pSection, armorName, tempBuffer);
+						//Debug::Log("DEBUG: Loaded %s HitAnim.%s=%s\n", pSection, armorName, tempBuffer);
 						totalLoaded++;
 					}
 				}
@@ -261,10 +261,12 @@ void WarheadTypeExt::ExtData::StoreArmorHitAnimIDs()
 	// Store animation IDs using parallel vectors for stable serialization
 	ArmorNames.clear();
 	AnimIDs.clear();
-	for (const auto& pair : ArmorHitAnim) {
+	for (const auto& pair : ArmorHitAnim)
+	{
 		const std::string& armorName = pair.first;
 		AnimTypeClass* pAnim = pair.second;
-		if (pAnim && pAnim->ID) {
+		if (pAnim && pAnim->ID)
+		{
 			ArmorNames.push_back(armorName);
 			AnimIDs.push_back(std::string(pAnim->ID));
 		}
@@ -275,24 +277,30 @@ void WarheadTypeExt::ExtData::ReconstructArmorHitAnimFromIDs()
 {
 	// Rebuild ArmorHitAnim map from parallel vectors after deserialization
 	ArmorHitAnim.clear();
-	
+
 	// Ensure both vectors have the same size
 	size_t count = std::min(ArmorNames.size(), AnimIDs.size());
-	for (size_t i = 0; i < count; ++i) {
+	for (size_t i = 0; i < count; ++i)
+	{
 		const std::string& armorName = ArmorNames[i];
 		const std::string& animID = AnimIDs[i];
-		
-		if (!animID.empty()) {
+
+		if (!animID.empty())
+		{
 			auto pAnim = AnimTypeClass::Find(animID.c_str());
-			if (pAnim) {
+			if (pAnim)
+			{
 				ArmorHitAnim[armorName] = pAnim;
 				Debug::Log("HitAnim: Reconstructed %s -> %s\n", armorName.c_str(), animID.c_str());
-			} else {
+			}
+			else
+			{
 				Debug::Log("HitAnim: Failed to find animation '%s' for armor '%s'\n", animID.c_str(), armorName.c_str());
 			}
 		}
 	}
 }
+
 
 // =============================
 // load / save
@@ -488,10 +496,10 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 		Debug::Log("[Developer warning][%s] AffectsAbovePercent is bigger than AffectsBelowPercent, the warhead will never activate!\n", pSection);
 
 	this->ReverseEngineer.Read(exINI, pSection, "ReverseEngineer");
+	this->ConvertAnim.Read(exINI, pSection, "ConvertAnim");
 
 	// Convert.From & Convert.To
 	TypeConvertGroup::Parse(this->Convert_Pairs, exINI, pSection, AffectedHouse::All);
-	this->ConvertAnim.Read(exINI, pSection, "ConvertAnim");
 
 	// AttachEffect
 	this->AttachEffects.LoadFromINI(pINI, pSection);
@@ -621,7 +629,7 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 			//	pSection, armorName, animTemp.Get() ? animTemp.Get()->ID : "null");
 		}
 	}
-	
+
 	// Store IDs for stable serialization after INI reading
 	this->StoreArmorHitAnimIDs();
 }
@@ -812,10 +820,6 @@ void WarheadTypeExt::ExtData::Serialize(T& Stm)
 
 		.Process(this->AirstrikeTargets)
 
-		.Process(this->CanKill)
-
-		.Process(this->ReverseEngineer)
-
 		// Ares tags
 		.Process(this->AffectsEnemies)
 		.Process(this->AffectsOwner)
@@ -827,16 +831,22 @@ void WarheadTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->PossibleCellSpreadDetonate)
 		.Process(this->Reflected)
 		.Process(this->DamageAreaTarget)
-		
+
+		.Process(this->CanKill)
+		.Process(this->ReverseEngineer)
+
 		// Serialize stable parallel vectors instead of raw pointers
 		.Process(this->ArmorNames)
 		.Process(this->AnimIDs);
+
+	// Note: ArmorHitAnim map is not serialized due to complexity.
+	// It will be rebuilt from INI on load, which is acceptable since
+	// the data is static and doesn't change during gameplay.
 }
 
 // Flag to ensure HitAnim data is only reloaded once per load operation
 namespace {
 	bool hasReloadedHitAnim = false;
-		;
 }
 
 void WarheadTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
@@ -844,7 +854,6 @@ void WarheadTypeExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
 	Extension<WarheadTypeClass>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 	
-	// Reload HitAnim data after each warhead is loaded from save
 	// Reconstruct ArmorHitAnim pointers from serialized IDs
 	this->ReconstructArmorHitAnimFromIDs();
 }
