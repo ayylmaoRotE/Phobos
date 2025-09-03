@@ -29,6 +29,30 @@
 
 using namespace Contracts;
 
+// (Unused helper you added; harmless to keep)
+static MessageListClass* BannerML = nullptr;
+static int BannerML_X = 0, BannerML_Y = 0, BannerML_W = 0, BannerML_H = 0;
+
+static void ensureBannerMessageList(int x, int y, int width)
+{
+	const int wantH = 14; // or uiHeaderHeight if you prefer
+	if (!BannerML || BannerML_X != x || BannerML_Y != y || BannerML_W != width || BannerML_H != wantH)
+	{
+		if (BannerML) { delete BannerML; BannerML = nullptr; }
+		BannerML = new MessageListClass();
+		BannerML->Init(
+			x, y,
+			/*MaxMsg*/1,
+			/*MaxChars*/160,
+			/*Height*/wantH,
+			/*EditX*/0, /*EditY*/0,
+			/*Overflow*/0, /*Start*/0, /*End*/0,
+			/*Width*/width
+		);
+		BannerML_X = x; BannerML_Y = y; BannerML_W = width; BannerML_H = wantH;
+	}
+}
+
 // --------------------- NEW: global enable/disable switch ---------------------
 static bool gContractsEnabled = true;
 static inline void wtrim_inplace(std::wstring& s);
@@ -174,6 +198,24 @@ void Manager::EnsureSeeds()
 	NormalizeDefinitions();
 }
 
+void Manager::CaptureMatchSeedIfDue(int64_t anchorFrame)
+{
+	if (MatchSeedCaptured) return;
+
+	const int64_t now = Unsorted::CurrentFrame;
+	if (now < anchorFrame) return;
+
+	if (auto* sc = ScenarioClass::Instance)
+	{
+		MatchSeed = sc->Random.Random();   // lockstep draw IF every peer calls at/after same sim frame
+	}
+	else
+	{
+		MatchSeed = 0; // deterministic fallback
+	}
+	MatchSeedCaptured = true;
+}
+
 // ---------- narrow<->wide helpers (ASCII-safe, fast, deterministic) ----------
 static inline std::wstring ToWideASCII(const char* s);
 static inline std::string  WideToNarrowASCII(const std::wstring& w);
@@ -230,6 +272,15 @@ int Manager::DeterministicRanged(int min, int max, uint32_t salt, uint32_t index
 int Manager::DeterministicWeightedPick(int totalWeight, uint32_t salt, uint32_t index) const
 {
 	return DeterministicRanged(1, totalWeight, salt, index);
+}
+
+static inline int PlayerNumberFromHouse(const HouseClass* h)
+{
+	if (!h) return -1;
+	const int slot = h->GetSpawnPosition();
+	if (slot >= 0)   return slot + 1;        // “Player 1..9” from lobby slot
+	const int idx = h->ArrayIndex;
+	return (idx >= 0) ? (idx + 1) : -1;      // fallback
 }
 
 static inline std::wstring LoadCSFSafe(const std::wstring& labelW)
@@ -318,7 +369,6 @@ static inline void wtrim_inplace(std::wstring& s)
 	if (b || e != s.size()) s.assign(s.begin() + b, s.begin() + e);
 }
 
-
 static inline std::wstring ToWideASCII(const char* s)
 {
 	if (!s) return L"";
@@ -366,6 +416,61 @@ static inline std::wstring GetTypeDisplayName(TechnoTypeClass* t)
 		return ToWideASCII(t->Name);
 	}
 	return L"";
+}
+
+static inline std::wstring GetSWDisplayName(SuperWeaponTypeClass* t)
+{
+	if (!t) return L"";
+	if (t->UIName && t->UIName[0])
+	{
+		std::wstring ui = LoadCSFSafe(std::wstring(t->UIName));
+		if (!ui.empty()) return ui;
+	}
+	if (t->ID) return ToWideASCII(t->ID);
+	return L"Superweapon";
+}
+
+// Reward.Text %-codes:
+//   %%  -> %
+//   %m  -> money amount (int)
+//   %c  -> unit count (int)
+//   %u  -> unit display name
+//   %S  -> superweapon display name
+static std::wstring ExpandRewardText(const RewardDef& rd)
+{
+	std::wstring unitName = rd.unitType ? GetTypeDisplayName(rd.unitType) : L"";
+	std::wstring swName = rd.swType ? GetSWDisplayName(rd.swType) : L"";
+
+	const std::wstring& t = rd.rewardText;
+	if (t.empty())
+	{
+		// sensible defaults if no template was provided
+		switch (rd.kind)
+		{
+		case RewardKind::Money:       return L"Money: " + std::to_wstring(std::max(0, rd.moneyAmount));
+		case RewardKind::Unit:        return std::to_wstring(std::max(1, rd.unitCount)) + L"× " + unitName;
+		case RewardKind::SuperWeapon: return L"Superweapon: " + swName;
+		}
+	}
+
+	std::wstring out; out.reserve(t.size() + 16);
+	for (size_t i = 0; i < t.size(); ++i)
+	{
+		wchar_t c = t[i];
+		if (c != L'%') { out.push_back(c); continue; }
+		if (i + 1 >= t.size()) { out.push_back(L'%'); break; }
+
+		switch (t[i + 1])
+		{
+		case L'%': out.push_back(L'%'); ++i; break;
+		case L'm': case L'M': out += std::to_wstring(std::max(0, rd.moneyAmount)); ++i; break;
+		case L'c': case L'C': out += std::to_wstring(std::max(1, rd.unitCount));     ++i; break;
+		case L'u': case L'U': out += unitName;                                       ++i; break;
+		case L's': case L'S': out += swName;                                         ++i; break;
+		default:  out.push_back(L'%'); /* keep unknown %x literally */ break;
+		}
+	}
+	return out;
 }
 
 static inline bool readBool(CCINIClass* ini, const char* sec, const char* key, bool defv)
@@ -587,48 +692,6 @@ void Manager::parseContracts(CCINIClass* ini)
 	}
 }
 
-void Manager::CaptureMatchSeedIfDue()
-{
-	if (MatchSeedCaptured) return;
-
-	uint32_t s = 0;
-
-	// Preferred: a stable per-match seed from the session/scenario.
-	if (auto* sc = ScenarioClass::Instance)
-	{
-		// Uncomment the first line that compiles in your fork.
-		// s = sc->RandomSeed;             // many forks have this
-		// s = sc->MapSeed;                // some Ares/Phobos forks expose this
-		// s = sc->Random.Seed;            // or a Seed/Peek() on Random
-		// s = sc->Random.Peek();          // if there is a non-advancing peek
-
-		// Robust fallback if none of the above exist:
-		// Derive a seed from deterministic, network-identical data (no frame timing).
-		uint32_t h = 0x13572468u;
-		if (sc->ININame) { h = HashStr32(h, sc->ININame); }
-		if (sc->ScenarioName) { h = HashStr32(h, sc->ScenarioName); }
-		if (auto* rules = RulesClass::Instance)
-		{
-			if (rules->BuildName) { h = HashStr32(h, rules->BuildName); }
-		}
-		// Mix in player slots/countries deterministically
-		for (int i = 0; i < HouseClass::Array.Count; ++i)
-		{
-			if (auto* hh = HouseClass::Array.Items[i])
-			{
-				// Exclude observers/special/neutral from the seed so specs don’t change it
-				if (!IsCompetitiveHouse(hh)) continue;
-				int slot = hh->GetSpawnPosition(); // -1 if N/A
-				h = Hash32(h ^ (uint32_t)((i & 0xFF) | ((slot & 0xFF) << 8)));
-			}
-		}
-		s = h;
-	}
-
-	MatchSeed = s;
-	MatchSeedCaptured = true;
-}
-
 void Manager::ensureHeaderMessageList()
 {
 	if (HeaderML) return;
@@ -698,11 +761,21 @@ void Manager::parseRewards(CCINIClass* ini)
 			rd.swType = st.empty() ? nullptr : SuperWeaponTypeClass::Find(st.c_str());
 
 			Debug::Log("[Contracts][parseRewards] %s: kind=SW, key='%s', swType=%p idx=%d",
-				base, st.c_str(), rd.swType, SWIdx(rd.swType));  // <—
+				base, st.c_str(), rd.swType, SWIdx(rd.swType));
 		}
 		else
 		{
 			continue;
+		}
+		rd.rewardText = readW(ini, "ContractBounties", (std::string(base) + ".Text").c_str(), L"");
+		wtrim_inplace(rd.rewardText);
+
+		if (!rd.rewardText.empty() && starts_with_icase(rd.rewardText, L"Name:"))
+		{
+			std::wstring lbl = rd.rewardText.substr(5);
+			wtrim_inplace(lbl);
+			std::wstring resolved = LoadCSFSafe(lbl);
+			rd.rewardText = resolved.empty() ? L"" : std::move(resolved); // fall back to auto text if CSF missing
 		}
 
 		rd.weight = readInt(ini, "ContractBounties", (std::string(base) + ".Weight").c_str(), 1);
@@ -722,9 +795,6 @@ void Manager::parseRewards(CCINIClass* ini)
 	uiHeaderWidth = std::max(100, readInt(ini, "ContractBounties", "UI.HeaderWidth", 640));
 	uiHeaderColor = readInt(ini, "ContractBounties", "UI.HeaderColor", -1);
 	uiHeaderStyle = readInt(ini, "ContractBounties", "UI.HeaderStyle", 0x4046);
-
-
-
 }
 
 void Manager::LoadFromRules(CCINIClass* ini)
@@ -812,7 +882,8 @@ void Contracts::Manager::LoadFromScenario(CCINIClass* ini)
 
 	const bool hasAnyReward =
 		!read(ini, "ContractBounties", "Reward1.Type", "").empty() ||
-		!read(ini, "ContractBounties", "Reward1", "").empty();
+		!read(ini, "ContractBounties", "Reward1", "").empty() ||
+		!read(ini, "ContractBounties", "Reward1.Text", "").empty();
 
 	const bool hasAnyUI =
 		!read(ini, "ContractBounties", "UI.X", "").empty() ||
@@ -825,7 +896,6 @@ void Contracts::Manager::LoadFromScenario(CCINIClass* ini)
 	const bool mapHasOverrides = (hasAnyContract || hasAnyReward || hasAnyUI);
 
 	if (mapHasOverrides)
-	
 	{
 		Debug::Log("[Contracts] Scenario provides overrides — parsing map.");
 		Contracts.clear();
@@ -972,8 +1042,6 @@ int Manager::requiredFor(const ContractDef& c) const
 	return c.required * maxSz;
 }
 
-
-
 void Manager::InitMatchSeed()
 {
 	if (!gContractsEnabled) return; // NEW guard
@@ -1039,9 +1107,12 @@ void Manager::StartOrSyncFromAnchor(int64_t anchorFrame)
 			activeRequired = std::max(1, requiredFor(cd));
 
 			// optional, user feedback
-			bannerText = L"[Contracts] Contract finished. New contract: #" + std::to_wstring(activeContractIndex + 1);
-			bannerFramesLeft = std::max(bannerFramesLeft, 15 * 15);
-			return;
+			if (bannerFramesLeft <= 0)
+			{
+				bannerText = L"[Contracts] Contract finished. New contract: #" + std::to_wstring(activeContractIndex + 1);
+				bannerFramesLeft = 15 * 30;
+			}
+			return; // IMPORTANT: stop scanning after landing on the window
 		}
 
 		start = end;
@@ -1121,7 +1192,7 @@ void Manager::StartContract()
 
 void Manager::startNewContract()
 {
-	if (!gContractsEnabled) return; // NEW guard
+	if (!gContractsEnabled) return;
 
 	EnsureSeeds();
 	if (!SeedsReady || Contracts.empty())
@@ -1132,7 +1203,6 @@ void Manager::startNewContract()
 
 	ActiveContractID = NextContractID++;
 
-	// deterministic contract choice (unchanged)
 	activeContractIndex = DeterministicRanged(
 		0, static_cast<int>(Contracts.size()) - 1,
 		RollSaltContracts, ActiveContractID);
@@ -1145,14 +1215,14 @@ void Manager::startNewContract()
 	activeIsPerTeam = cd.perTeam;
 	activeRequired = std::max(1, requiredFor(cd));
 
-	const int frames = std::max(1, cd.timerSeconds) * 15; // ~15 ticks/sec
+	const int frames = std::max(1, cd.timerSeconds) * 15;
 
 	const int64_t now = Unsorted::CurrentFrame;
 	if (initialAnchorFrame >= 0)
 	{
 		currentContractStartFrame = initialAnchorFrame;
 		timerEndFrame = currentContractStartFrame + frames;
-		initialAnchorFrame = -1; // consume anchor
+		initialAnchorFrame = -1;
 	}
 	else
 	{
@@ -1160,12 +1230,17 @@ void Manager::startNewContract()
 		timerEndFrame = now + frames;
 	}
 
-	bannerText = L"[Contracts] Contract finished. New contract: #" + std::to_wstring(activeContractIndex + 1);
-	bannerFramesLeft = std::max(bannerFramesLeft, 15 * 15);
+	// only announce “new contract” if no reward banner is currently up
+	if (bannerFramesLeft <= 0)
+	{
+		bannerText = L"[Contracts] Contract finished. New contract: #" + std::to_wstring(activeContractIndex + 1);
+		bannerFramesLeft = 15 * 30;
+	}
 }
+
 // ---------- UI ----------
 
-const wchar_t* Manager::tryHouseName(HouseClass* /*h*/)
+const wchar_t* Contracts::Manager::tryHouseName(HouseClass* /*h*/) const
 {
 	// Portable fallback: we don't rely on house/player name APIs here
 	return L""; // returning empty enforces "Player N" fallback
@@ -1227,17 +1302,17 @@ static inline std::wstring ExpandContractText(const std::wstring& tmpl,
 
 void Manager::DrawUI()
 {
-	if (!gContractsEnabled) return; // NEW guard
-
+	if (!gContractsEnabled) return;
 	if (activeContractIndex < 0 || activeContractIndex >= (int)Contracts.size())
 		return;
 
 	const ContractDef& cd = Contracts[activeContractIndex];
 
+	// Normal header (current contract + timer)
 	std::wstring header = L"Contract ";
 	header += std::to_wstring(activeContractIndex + 1);
 	header += L": ";
-	// expand %s / %d without printf so contract text cannot eat timer args
+
 	std::wstring desc = ExpandContractText(cd.textTemplate, cd, activeRequired);
 	header += desc;
 
@@ -1250,92 +1325,86 @@ void Manager::DrawUI()
 		header += tb;
 	}
 
+	// If a banner is active, show it INSTEAD of the normal header
+	const std::wstring& headerToDraw = (bannerFramesLeft > 0 && !bannerText.empty())
+		? bannerText
+		: header;
+
 	ensureHeaderMessageList();
 
-	// Use the resolved scheme index (already validated to >= 0 in parseRewards)
 	int colorIdx = uiHeaderColor;
 	if (colorIdx < 0)
 	{
 		colorIdx = std::max(ColorScheme::FindIndex("LightGrey", 53), 0);
 	}
 
-	// Stable message ID so we update the same label
 	constexpr int kHeaderId = 1;
-
 	if (auto* slot = HeaderML->GetMessage(kHeaderId))
 	{
-		if (wcsncmp(slot, header.c_str(), 160) != 0)
+		if (wcsncmp(slot, headerToDraw.c_str(), 160) != 0)
 		{
-			wcsncpy_s(slot, 160 + 1, header.c_str(), _TRUNCATE); // FIX
+			wcsncpy_s(slot, 160 + 1, headerToDraw.c_str(), _TRUNCATE);
 		}
 	}
 	else
 	{
-		HeaderML->AddMessage(nullptr, kHeaderId, header.c_str(),
-							 colorIdx, static_cast<TextPrintType>(uiHeaderStyle),
-							 0x7FFFFFFF, true);
+		HeaderML->AddMessage(
+			/*Owner*/ nullptr,
+			/*ID*/ kHeaderId,
+			/*Text*/ headerToDraw.c_str(),
+			/*ColorIdx*/ colorIdx,
+			/*Style*/ static_cast<TextPrintType>(uiHeaderStyle),
+			/*TTL*/ 0x7FFFFFFF,
+			/*unknown*/ true
+		);
 	}
 	HeaderML->Draw();
 
+	// --- rows (unchanged) ---
+	const int lineH = 12;
+	const int yRows = uiY + std::max(lineH, uiHeaderHeight);
+	const size_t lines = Competitors.size();
+	ensureRowsMessageList(uiX, yRows, uiHeaderWidth, lines);
+
+	const int req = std::max(1, activeRequired);
+	for (size_t i = 0; i < lines; ++i)
 	{
-		const int lineH = 12;
-		const int yRows = uiY + std::max(lineH, uiHeaderHeight);
-		const size_t lines = Competitors.size();
+		const int msgId = 100 + static_cast<int>(i);
+		const auto& comp = Competitors[i];
 
-		ensureRowsMessageList(uiX, yRows, uiHeaderWidth, lines);
-
-		const int req = std::max(1, activeRequired);
-
-		for (size_t i = 0; i < lines; ++i)
+		HouseClass* rep = PickTeamRep(comp);
+		const int prog = std::min<int>(comp.progress, req);
+		const wchar_t* label = tryHouseName(rep);
+		wchar_t line[160];
+		if (label && *label)
 		{
-			const int msgId = 100 + static_cast<int>(i); // stable ID per row
-			const auto& comp = Competitors[i];
-
-			// representative house for color & label
-			HouseClass* rep = PickTeamRep(comp);
-
-			// label text
-			const int prog = std::min<int>(comp.progress, req);
-			const wchar_t* label = tryHouseName(rep);
-			wchar_t line[160];
-			if (label && *label)
-			{
-				_snwprintf_s(line, _TRUNCATE, L"%ls: %d / %d", label, prog, req);
-			}
-			else
-			{
-				_snwprintf_s(line, _TRUNCATE, L"Team %zu: %d / %d", i + 1, prog, req);
-			}
-
-			// resolve ColorScheme (0-based) for the row color
-			int scheme0 = SchemeIdx0_FromHouse(rep);
-			if (scheme0 < 0) { scheme0 = SchemeIdx0_Default(); }
-
-			// update existing message text, or add a colored line using the scheme index
-			if (auto* slot = RowsML->GetMessage(msgId))
-			{
-				if (wcsncmp(slot, line, 160) != 0)
-				{
-					wcsncpy_s(slot, 160 + 1, line, _TRUNCATE);
-				}
-			}
-			else
-			{
-				RowsML->AddMessage(
-					/*Owner*/      nullptr,
-					/*ID*/         msgId,
-					/*Text*/       line,
-					/*ColorIdx*/   scheme0,                                   // <<< key change
-					/*Style*/      static_cast<TextPrintType>(uiHeaderStyle),
-					/*TTL*/        0x7FFFFFFF,
-					/*unknown*/    true
-				);
-			}
+			_snwprintf_s(line, _TRUNCATE, L"%ls: %d / %d", label, prog, req);
+		}
+		else
+		{
+			_snwprintf_s(line, _TRUNCATE, L"Team %zu: %d / %d", i + 1, prog, req);
 		}
 
-		RowsML->Draw();
+		int scheme0 = SchemeIdx0_FromHouse(rep);
+		if (scheme0 < 0) { scheme0 = SchemeIdx0_Default(); }
+
+		if (auto* slot = RowsML->GetMessage(msgId))
+		{
+			if (wcsncmp(slot, line, 160) != 0)
+			{
+				wcsncpy_s(slot, 160 + 1, line, _TRUNCATE);
+			}
+		}
+		else
+		{
+			RowsML->AddMessage(nullptr, msgId, line, scheme0,
+							   static_cast<TextPrintType>(uiHeaderStyle),
+							   0x7FFFFFFF, true);
+		}
 	}
+	RowsML->Draw();
 }
+
 // ---------- events ----------
 
 void Manager::OnFrame()
@@ -1478,9 +1547,34 @@ void Manager::OnMoney(HouseClass* house, int amount)
 	}
 }
 
+// ---------- winner label helper ----------
+
+// NOTE: This helper avoids touching private Manager members (like tryHouseName),
+// so it compiles without header changes. It shows “Team N” for multi-house teams
+// and “Player N” for single-house winners.
+static std::wstring WinnerLabel(const Contracts::Manager& mgr, const Competitor& comp)
+{
+	HouseClass* rep = PickTeamRep(comp);
+
+	// Prefer a stable “Team N” label when it’s a multi-house team
+	int teamIdx = -1;
+	for (size_t i = 0; i < mgr.Competitors.size(); ++i)
+	{
+		if (&mgr.Competitors[i] == &comp) { teamIdx = static_cast<int>(i); break; }
+	}
+	if (mgr.activeIsPerTeam && comp.members.size() > 1)
+	{
+		return (teamIdx >= 0)
+			? (L"Team " + std::to_wstring(teamIdx + 1))
+			: L"Team";
+	}
+
+	// Single house → “Player N” (spawn slot, then ArrayIndex as fallback)
+	const int pn = PlayerNumberFromHouse(rep);
+	return L"Player " + std::to_wstring(std::max(1, pn));
+}
+
 // ---------- rewards ----------
-
-
 
 const RewardDef* Manager::pickRewardSync() const
 {
@@ -1523,6 +1617,8 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 {
 	if (!rw) return;
 
+	const std::wstring winnerTxt = WinnerLabel(*this, winner);
+
 	switch (rw->kind)
 	{
 	case RewardKind::Money:
@@ -1531,16 +1627,13 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 		{
 			h->GiveMoney(rw->moneyAmount);
 		}
-		bannerText = L"Contract complete! Money awarded.";
+		const std::wstring pretty = ExpandRewardText(*rw);
+		bannerText = L"Contract complete! " + winnerTxt + L" — " + pretty;
 		bannerFramesLeft = 15 * 30;
-		Debug::Log("Contract complete, money awarded");
-		// NEW: broadcast a deterministic, localization-safe message
-		HouseClass* owner = PickDeterministicOwner(winner);
-		if (owner)
+
+		if (HouseClass* owner = PickDeterministicOwner(winner))
 		{
-			std::wstring who = L"House#" + std::to_wstring(owner->ArrayIndex);
-			std::wstring amt = std::to_wstring(std::max(0, rw->moneyAmount));
-			BroadcastRewardPopup(owner, L"[Contracts] " + who + L" received Money: " + amt);
+			BroadcastRewardPopup(owner, L"[Contracts] " + winnerTxt + L" received: " + pretty);
 		}
 	} break;
 
@@ -1563,26 +1656,20 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 				}
 			}
 		}
-		bannerText = L"Contract complete! Unit(s) deployed.";
-		Debug::Log("Contract complete! Unit(s) deployed.");
+		const std::wstring pretty = ExpandRewardText(*rw);
+		bannerText = L"Contract complete! " + winnerTxt + L" — " + pretty;
 		bannerFramesLeft = 15 * 30;
 
-		// NEW: broadcast which type/count
-		HouseClass* owner = PickDeterministicOwner(winner);
-		if (owner)
+		if (HouseClass* owner = PickDeterministicOwner(winner))
 		{
-			std::wstring who = L"House#" + std::to_wstring(owner->ArrayIndex);
-			std::wstring utype = rw->unitType->ID ? ToWideASCII(rw->unitType->ID) : L"UNIT";
-			std::wstring cnt = std::to_wstring(std::max(1, rw->unitCount));
-			BroadcastRewardPopup(owner, L"[Contracts] " + who + L" received Units: "
-										+ cnt + L"x " + utype);
+			BroadcastRewardPopup(owner, L"[Contracts] " + winnerTxt + L" received: " + pretty);
 		}
 	} break;
 
 	case RewardKind::SuperWeapon:
 	{
 		Debug::Log("[Contracts][SW] begin: rw='%s' swType=%p idx=%d",
-			rw->id.c_str(), rw->swType, SWIdx(rw->swType));
+		   rw->id.c_str(), rw->swType, SWIdx(rw->swType));
 
 		if (!rw->swType)
 		{
@@ -1597,9 +1684,16 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 			break;
 		}
 
+		// Now it's safe to build the pretty text & announce
+		const std::wstring pretty = ExpandRewardText(*rw);
+		bannerText = L"Contract complete! " + winnerTxt + L" — " + pretty;
+		bannerFramesLeft = 15 * 30;
+
+		BroadcastRewardPopup(owner, L"[Contracts] " + winnerTxt + L" received: " + pretty);
+
 		Debug::Log("[Contracts][SW] owner=%p idx=%d human=%d powered=%d",
 			owner, owner->ArrayIndex, owner->IsHumanPlayer ? 1 : 0,
-			owner->Is_Powered() ? 1 : 0);  // :contentReference[oaicite:0]{index=0}
+			owner->Is_Powered() ? 1 : 0);
 
 		// Try to find an existing instance for this house/type.
 		SuperClass* sw = FindSuper(owner, rw->swType);
@@ -1608,8 +1702,8 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 		const bool created = (sw == nullptr);
 		if (created)
 		{
-			sw = new SuperClass(rw->swType, owner);                         // :contentReference[oaicite:1]{index=1}
-			owner->Supers.AddItem(sw);                                       // existing field in your build
+			sw = new SuperClass(rw->swType, owner);
+			owner->Supers.AddItem(sw);
 			Debug::Log("[Contracts][SW] created new SuperClass and added to house->Supers: sw=%p count=%d",
 				sw, owner->Supers.Count);
 		}
@@ -1617,35 +1711,28 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 		// Snapshot state before mutating it
 		Debug::Log("[Contracts][SW] pre: IsPresent=%d IsOneTime=%d IsReady=%d IsSuspended=%d CanHold=%d",
 			sw->IsPresent ? 1 : 0, sw->IsOneTime ? 1 : 0, sw->IsReady ? 1 : 0,
-			sw->IsSuspended ? 1 : 0, sw->CanHold ? 1 : 0);                   // :contentReference[oaicite:2]{index=2}
+			sw->IsSuspended ? 1 : 0, sw->CanHold ? 1 : 0);
 
-		// Make it owned/available NOW (no firing here; let Ares handle AutoFire/AITargeting)
-		const bool grantChanged = sw->Grant(/*oneTime*/ true, /*announce*/ true, /*onHold*/ false); // :contentReference[oaicite:3]{index=3}
+		// Make it owned/available NOW (no firing here)
+		const bool grantChanged = sw->Grant(/*oneTime*/ true, /*announce*/ true, /*onHold*/ false);
 		Debug::Log("[Contracts][SW] Grant(oneTime=1,announce=1,onHold=0) -> changed=%d", grantChanged ? 1 : 0);
 
-		const bool holdChanged = sw->SetOnHold(false);                       // ensure not held  :contentReference[oaicite:4]{index=4}
+		const bool holdChanged = sw->SetOnHold(false);
 		Debug::Log("[Contracts][SW] SetOnHold(false) -> changed=%d", holdChanged ? 1 : 0);
 
-		sw->SetRechargeTime(0);                                              // zero out recharge  :contentReference[oaicite:5]{index=5}
-		sw->SetReadiness(true);                                              // ready now          :contentReference[oaicite:6]{index=6}
+		sw->SetRechargeTime(0);
+		sw->SetReadiness(true);
 
 		// Snapshot after
 		Debug::Log("[Contracts][SW] post: IsPresent=%d IsOneTime=%d IsReady=%d IsSuspended=%d CanHold=%d Name='%ls'",
 			sw->IsPresent ? 1 : 0, sw->IsOneTime ? 1 : 0, sw->IsReady ? 1 : 0,
-			sw->IsSuspended ? 1 : 0, sw->CanHold ? 1 : 0, sw->NameReadiness()); // readiness text  :contentReference[oaicite:7]{index=7}
+			sw->IsSuspended ? 1 : 0, sw->CanHold ? 1 : 0, sw->NameReadiness());
 
 		// Optional diagnostic: can the game fire it *if asked*?
-		const int canFire = sw->CanFire();                                   // 0 = no, nonzero = ok  :contentReference[oaicite:8]{index=8}
+		const int canFire = sw->CanFire(); // 0 = no, nonzero = ok
 		Debug::Log("[Contracts][SW] CanFire() -> %d (Type.Action=%d Manual=%d Powered=%d)",
 			canFire, rw->swType->Action, rw->swType->ManualControl ? 1 : 0,
-			rw->swType->IsPowered ? 1 : 0);                                  // :contentReference[oaicite:9]{index=9}
-
-		bannerText = L"Contract complete! Superweapon granted.";
-		bannerFramesLeft = 15 * 15;
-
-		std::wstring who = L"House#" + std::to_wstring(owner->ArrayIndex);
-		std::wstring swid = L"SW#" + std::to_wstring(SWIdx(rw->swType));
-		BroadcastRewardPopup(owner, L"[Contracts] " + who + L" received SuperWeapon: " + swid);
+			rw->swType->IsPowered ? 1 : 0);
 
 		Debug::Log("[Contracts][SW] done.");
 	} break;

@@ -49,6 +49,7 @@ namespace Contracts
 		SuperWeaponTypeClass* swType = nullptr;
 		int orderIndex = 0;
 		std::string id;
+		std::wstring rewardText;
 	};
 
 	struct Competitor
@@ -69,6 +70,7 @@ namespace Contracts
 		struct TransientSW { SuperClass* SW {}; int ExpireFrame {}; };
 		std::vector<TransientSW> TransientSWs;
 		void TickTransientSWs();
+		const wchar_t* tryHouseName(HouseClass* h) const;
 
 		//RNG
 		// --- deterministic roll state (per match) ---
@@ -79,7 +81,7 @@ namespace Contracts
 		uint32_t ActiveContractID = 0;   // ID of the currently active contract
 		uint32_t MatchSeed = 0;
 		bool     MatchSeedCaptured = false;
-		void CaptureMatchSeedIfDue();
+		void CaptureMatchSeedIfDue(int64_t anchorFrame);
 
 
 		// Deterministic start/sync from a shared anchor (handles late defs gracefully).
@@ -135,7 +137,7 @@ namespace Contracts
 
 		// helpers
 		static COLORREF colorOfHouse(HouseClass* h);
-		static const wchar_t* tryHouseName(HouseClass* h);
+		
 
 		// data
 		public:std::vector<ContractDef> Contracts;
@@ -162,6 +164,7 @@ namespace Contracts
 		int64_t      localFrame = 0;
 		public:int   bannerFramesLeft = 0;
 		std::wstring bannerText;
+
 
 		bool HasDefinitions() const { return !Contracts.empty() && !Rewards.empty(); }
 		bool HasStarted() const { return activeContractIndex >= 0 || initialAnchorFrame >= 0; }
