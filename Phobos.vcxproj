@@ -355,9 +355,9 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="src\version.rc" />
+    <ClCompile Include="src\Ext\Techno\Body.Visuals.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <Object Include="DevBuild\IntDir\src\Ext\Techno\Body.Visuals.obj" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
