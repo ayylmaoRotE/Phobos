@@ -834,6 +834,7 @@ void WarheadTypeExt::ExtData::Serialize(T& Stm)
 
 		.Process(this->CanKill)
 		.Process(this->ReverseEngineer)
+
 		// Serialize stable parallel vectors instead of raw pointers
 		.Process(this->ArmorNames)
 		.Process(this->AnimIDs);

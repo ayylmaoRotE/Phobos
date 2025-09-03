@@ -8,6 +8,12 @@ public:
 	ValueableVector<TechnoTypeClass*> FromTypes;
 	Nullable<TechnoTypeClass*> ToType;
 	Nullable<AffectedHouse> AppliedTo;
+	Valueable<double> Chance;
+
+	// Constructors
+	TypeConvertGroup() : Chance(1.0) { }
+	TypeConvertGroup(const ValueableVector<TechnoTypeClass*>& fromTypes, const Nullable<TechnoTypeClass*>& toType, const Nullable<AffectedHouse>& appliedTo, double chance = 1.0)
+		: FromTypes(fromTypes), ToType(toType), AppliedTo(appliedTo), Chance(chance) { }
 
 	bool Load(PhobosStreamReader& stm, bool registerForChange);
 	bool Save(PhobosStreamWriter& stm) const;
