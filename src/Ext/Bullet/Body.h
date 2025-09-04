@@ -20,6 +20,7 @@ public:
 	class ExtData final : public Extension<BulletClass>
 	{
 	public:
+		unsigned int RNGSeed { 0u };
 		BulletTypeExt::ExtData* TypeExtData;
 		HouseClass* FirerHouse;
 		int CurrentStrength;
@@ -58,6 +59,38 @@ public:
 		void ApplyRadiationToCell(CellStruct cell, int spread, int radLevel);
 		void InitializeLaserTrails();
 
+		__forceinline unsigned int RNG_Next()
+		{
+			// xorshift32 — deterministic & fast
+			unsigned int x = this->RNGSeed;
+			x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+			if (!x) { x = 0xA5366B4D; }
+			this->RNGSeed = x;
+			return x;
+		}
+
+		__forceinline int RNG_Ranged(int lo, int hi)
+		{
+			if (hi <= lo) { return lo; }
+			const unsigned int span = (unsigned int)(hi - lo + 1);
+			return lo + (int)(RNG_Next() % span);	
+		}
+
+		static BulletExt* Get(BulletClass* p) { /* your ext map */ }
+		uint32_t SyncSeed = 0xDEADBEEF;
+		inline uint32_t Next()
+		{
+			// xorshift32 – fast, deterministic, no globals
+			uint32_t x = SyncSeed;
+			x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+			SyncSeed = x ? x : 0xA5366B4D; // avoid 0
+			return SyncSeed;
+		}
+		inline int NextRange(int maxExclusive)
+		{
+			return maxExclusive > 0 ? (int)(Next() % (uint32_t)maxExclusive) : 0;
+		}
+
 	private:
 		template <typename T>
 		void Serialize(T& Stm);
@@ -82,4 +115,5 @@ public:
 	static inline void SimulatedFiringElectricBolt(BulletClass* pBullet);
 	static inline void SimulatedFiringRadBeam(BulletClass* pBullet, HouseClass* pHouse);
 	static inline void SimulatedFiringParticleSystem(BulletClass* pBullet, HouseClass* pHouse);
+
 };

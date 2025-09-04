@@ -151,9 +151,13 @@ inline void BulletExt::SimulatedFiringAnim(BulletClass* pBullet, HouseClass* pHo
 		return;
 
 	const auto pFirer = pBullet->Owner;
-	const auto pAnimType = pWeapon->Anim[(animCounts % 8 == 0) // Have direction
-		? (static_cast<int>((Math::atan2(pBullet->Velocity.Y , pBullet->Velocity.X) / Math::TwoPi + 1.5) * animCounts - (animCounts / 8) + 0.5) % animCounts) // Calculate direction
-		: ScenarioClass::Instance->Random.RandomRanged(0 , animCounts - 1)]; // Simple random;
+	//const auto pAnimType = pWeapon->Anim[(animCounts % 8 == 0) // Have direction
+		//? (static_cast<int>((Math::atan2(pBullet->Velocity.Y , pBullet->Velocity.X) / Math::TwoPi + 1.5) * animCounts - (animCounts / 8) + 0.5) % animCounts) // Calculate direction
+		//: ScenarioClass::Instance->Random.RandomRanged(0 , animCounts - 1)]; // Simple random;
+
+	const auto pAnimType = pWeapon->Anim[(animCounts % 8 == 0)
+		 ? (static_cast<int>((Math::atan2(pBullet->Velocity.Y, pBullet->Velocity.X) / Math::TwoPi + 1.5) * animCounts - (animCounts / 8) + 0.5) % animCounts)
+		 : BulletExt::ExtMap.Find(pBullet)->RNG_Ranged(0, animCounts - 1)];
 /*
 	const auto velocityRadian = Math::atan2(pBullet->Velocity.Y , pBullet->Velocity.X);
 	const auto ratioOfRotateAngle = velocityRadian / Math::TwoPi;
@@ -193,7 +197,8 @@ inline void BulletExt::SimulatedFiringReport(BulletClass* pBullet)
 		return;
 
 	const auto pFirer = pBullet->Owner;
-	const auto reportIndex = pWeapon->Report[(pFirer ? pFirer->unknown_short_3C8 : ScenarioClass::Instance->Random.Random()) % pWeapon->Report.Count];
+	//const auto reportIndex = pWeapon->Report[(pFirer ? pFirer->unknown_short_3C8 : ScenarioClass::Instance->Random.Random()) % pWeapon->Report.Count];
+	const auto reportIndex = pWeapon->Report[(pFirer ? pFirer->unknown_short_3C8 : BulletExt::ExtMap.Find(pBullet)->RNG_Next()) % pWeapon->Report.Count];
 	VocClass::PlayAt(reportIndex, pBullet->Location, nullptr);
 }
 
@@ -331,7 +336,8 @@ void BulletExt::SimulatedFiringUnlimbo(BulletClass* pBullet, HouseClass* pHouse,
 	{
 		// (EDITED) 32-facing LUT instead of sin/cos
 		DirStruct dir;
-		const int idx = ScenarioClass::Instance->Random.RandomRanged(0, 31);
+		//const int idx = ScenarioClass::Instance->Random.RandomRanged(0, 31);
+		const int idx = BulletExt::ExtMap.Find(pBullet)->RNG_Ranged(0, 31);
 		dir.SetValue<5>(idx);
 
 		// Exact 2π/32 samples
@@ -422,6 +428,7 @@ template <typename T>
 void BulletExt::ExtData::Serialize(T& Stm)
 {
 	Stm
+		.Process(this->RNGSeed)
 		.Process(this->TypeExtData)
 		.Process(this->FirerHouse)
 		.Process(this->CurrentStrength)

@@ -17,6 +17,7 @@
 #include <Utilities/Patch.h>
 #include <Misc/BeaconTTL.h>
 #include <New/Contracts/ContractEvents.h>
+#include <Utilities/EVADetour.h>
 
 
 
@@ -820,7 +821,7 @@ DEFINE_HOOK(0x668F6A, RulesData_InitializeAfterAllLoaded, 0x5)
 			pExt->CompleteInitialization();
 		}
 	}
-	
+	InstallEVADetour();
 	Debug::Log("RulesData_InitializeAfterAllLoaded: Processed %d TechnoTypes\n", processedCount);
 	return 0;
 }

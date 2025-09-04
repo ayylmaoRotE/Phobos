@@ -14,6 +14,7 @@
 #include "Ext/WeaponType/Body.h"
 #include <Ext/Scenario/Body.h>
 #include "Ext/Sidebar/SWSidebar/UISafeOps.h"
+#include <Utilities/EVAGuard.h>
 
 // ============= New SuperWeapon Effects================
 
@@ -619,7 +620,8 @@ void SWTypeExt::ExtData::ApplyLinkedSW(SuperClass* pSW, const CellStruct& /*cell
 	if (anyActive && notObserver && pHouse->IsCurrentPlayer())
 	{
 		if (this->EVA_LinkedSWAcquired.isset())
-			VoxClass::PlayIndex(this->EVA_LinkedSWAcquired.Get(), -1, -1);
+			PlayIndex_Safe(this->EVA_LinkedSWAcquired.Get(), -1, -1);
+			//VoxClass::PlayIndex(this->EVA_LinkedSWAcquired.Get(), -1, -1);
 
 		MessageListClass::Instance.PrintMessage(
 			this->Message_LinkedSWAcquired.Get(),

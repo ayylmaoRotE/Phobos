@@ -9,6 +9,8 @@
 #include <Ext/House/Body.h>
 #include <Utilities/AresFunctions.h>
 #include <unordered_map>
+#include <Utilities/SyncGuard.h>
+#include <Utilities/EVAGuard.h>
 
 SWButtonClass::SWButtonClass(int superIdx, int x, int y, int width, int height)
 	: GadgetClass(x, y, width, height, (GadgetFlag::LeftPress | GadgetFlag::RightPress), false)
@@ -275,23 +277,27 @@ bool SWButtonClass::LaunchSuper() const
 
 	if (!pSuper->CanFire() && !manual)
 	{
-		VoxClass::PlayIndex(pSWExt->EVA_Impatient);
+		//VoxClass::PlayIndex(pSWExt->EVA_Impatient);
+		PlayIndex_Safe(pSWExt->EVA_Impatient, -1, -1);
 		return false;
 	}
 
 	if (!pCurrent->CanTransactMoney(pSWExt->Money_Amount))
 	{
-		VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds);
+		//VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds);
+		PlayIndex_Safe(pSWExt->EVA_InsufficientFunds, -1, -1);
 		pSWExt->PrintMessage(pSWExt->Message_InsufficientFunds, pCurrent);
 	}
 	else if (pSWExt->BattlePoints_Amount != 0 && (!pCurExt || !pCurExt->CanTransactBattlePoints(pSWExt->BattlePoints_Amount)))
 	{
-		VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds); // Reuse insufficient funds sound for now
+		//VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds); // Reuse insufficient funds sound for now
+		PlayIndex_Safe(pSWExt->EVA_InsufficientFunds, -1, -1);
 		pSWExt->PrintMessage(pSWExt->Message_InsufficientFunds, pCurrent); // Reuse insufficient funds message for now
 	}
 	else if (pSWExt->CommanderPoints_Amount != 0 && (!pCurExt || !pCurExt->CanTransactCommanderPoints(pSWExt->CommanderPoints_Amount)))
 	{
-		VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds); // Reuse insufficient funds sound for now
+		PlayIndex_Safe(pSWExt->EVA_InsufficientFunds, -1, -1);
+		//VoxClass::PlayIndex(pSWExt->EVA_InsufficientFunds); // Reuse insufficient funds sound for now
 		pSWExt->PrintMessage(pSWExt->Message_InsufficientFunds, pCurrent); // Reuse insufficient funds message for now
 	}
 	else if (!pSWExt->SW_UseAITargeting || (AresFunctions::IsTargetConstraintsEligible && AresFunctions::IsTargetConstraintsEligible(AresFunctions::SWTypeExtMap_Find(pSuper->Type), HouseClass::CurrentPlayer, true)))
@@ -317,7 +323,8 @@ bool SWButtonClass::LaunchSuper() const
 				DisplayClass::Instance.PlaceBeaconMode = false;
 				DisplayClass::Instance.CurrentSWTypeIndex = swIndex;
 				MapClass::Instance.UnselectAll();
-				VoxClass::PlayIndex(pSWExt->EVA_SelectTarget);
+				//VoxClass::PlayIndex(pSWExt->EVA_SelectTarget);
+				PlayIndex_Safe(pSWExt->EVA_SelectTarget, -1, -1);
 			}
 
 			return true;

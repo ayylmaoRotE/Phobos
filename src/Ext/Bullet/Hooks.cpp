@@ -7,6 +7,25 @@
 #include <Utilities/Macro.h>
 
 #include <ScenarioClass.h>
+#include <Unsorted.h>
+#include <Utilities/SyncGuard.h>
+
+static inline int GetBulletIndex(const BulletClass* b)
+{
+	for (int i = 0; i < BulletClass::Array.Count; ++i)
+	{
+		if (BulletClass::Array.GetItem(i) == b) { return i; }
+	}
+	return -1;
+}
+static inline int GetBulletTypeIndex(const BulletTypeClass* t)
+{
+	for (int i = 0; i < BulletTypeClass::Array.Count; ++i)
+	{
+		if (BulletTypeClass::Array.GetItem(i) == t) { return i; }
+	}
+	return -1;
+}
 
 // has everything inited except SpawnNextAnim at this point
 DEFINE_HOOK(0x466556, BulletClass_Init, 0x6)
@@ -19,9 +38,34 @@ DEFINE_HOOK(0x466556, BulletClass_Init, 0x6)
 		pExt->FirerHouse = pThis->Owner ? pThis->Owner->Owner : nullptr;
 		pExt->CurrentStrength = pType->Strength;
 		pExt->TypeExtData = BulletTypeExt::ExtMap.Find(pType);
-
+		
 		if (!pType->Inviso)
 			pExt->InitializeLaserTrails();
+
+		const auto ownerHouse = (pThis->Owner && pThis->Owner->Owner) ? pThis->Owner->Owner : nullptr;
+		unsigned int seed = 0x9E3779B9u;
+		seed ^= (unsigned int)Unsorted::CurrentFrame * 0x85EBCA6Bu;
+		const int bulletIdx = GetBulletIndex(pThis);
+		if (bulletIdx >= 0)
+		{
+			seed ^= (unsigned int)bulletIdx * 0xC2B2AE35u;
+		}
+
+		if (ownerHouse)
+		{
+			seed ^= (unsigned int)ownerHouse->ArrayIndex * 0x27D4EB2Du;
+		}
+
+		if (pThis->Type)
+		{
+			const int typeIdx = GetBulletTypeIndex(pThis->Type);
+			if (typeIdx >= 0)
+			{
+				seed ^= (unsigned int)typeIdx * 0x165667B1u;
+			}
+		}
+
+		pExt->RNGSeed = seed;
 	}
 
 	return 0;
@@ -312,7 +356,8 @@ DEFINE_HOOK(0x46902C, BulletClass_Explode_Cluster, 0x6)
 	const int min = pTypeExt->ClusterScatter_Min.Get();
 	const int max = pTypeExt->ClusterScatter_Max.Get();
 	auto coords = origCoords;
-	auto& random = ScenarioClass::Instance->Random;
+	//auto& random = ScenarioClass::Instance->Random;
+	auto* pExt = BulletExt::ExtMap.Find(pThis);
 
 	for (int i = 0; i < pThis->Type->Cluster; i++)
 	{
@@ -321,8 +366,14 @@ DEFINE_HOOK(0x46902C, BulletClass_Explode_Cluster, 0x6)
 		if (!pThis->IsAlive)
 			break;
 
-		const int distance = random.RandomRanged(min, max);
-		coords = MapClass::GetRandomCoordsNear(origCoords, distance, false);
+		//const int distance = random.RandomRanged(min, max);
+		//coords = MapClass::GetRandomCoordsNear(origCoords, distance, false);
+		const int distance = pExt->RNG_Ranged(min, max);
+		{
+		            // MapClass::GetRandomCoordsNear uses the global RNG; guard it to avoid advancing the sim RNG.
+			SyncGuard _g;
+			coords = MapClass::GetRandomCoordsNear(origCoords, distance, false);
+		}
 	}
 
 	return SkipGameCode;
@@ -447,7 +498,9 @@ DEFINE_HOOK(0x4687F8, BulletClass_Unlimbo_FlakScatter, 0x6)
 		const int min = pTypeExt->BallisticScatter_Min.Get(Leptons(0));
 		const int max = pTypeExt->BallisticScatter_Max.Get(Leptons(defaultValue));
 
-		const int result = (int)((mult * ScenarioClass::Instance->Random.RandomRanged(2 * min, 2 * max)) / pThis->WeaponType->Range);
+		//const int result = (int)((mult * ScenarioClass::Instance->Random.RandomRanged(2 * min, 2 * max)) / pThis->WeaponType->Range);
+		const int roll = BulletExt::ExtMap.Find(pThis)->RNG_Ranged(2 * min, 2 * max);
+		const int result = (int)((mult * roll) / pThis->WeaponType->Range);
 		R->EAX(result);
 	}
 

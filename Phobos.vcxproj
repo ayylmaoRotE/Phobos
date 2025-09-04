@@ -218,6 +218,7 @@
     <ClCompile Include="src\Phobos.INI.cpp" />
     <ClCompile Include="src\Phobos.Save.cpp" />
     <ClCompile Include="src\Phobos.cpp" />
+    <ClCompile Include="src\Utilities\EVADetour.cpp" />
     <ClCompile Include="src\Utilities\ShapeTextPrinter.cpp" />
     <ClCompile Include="src\Utilities\SpawnerHelper.cpp" />
     <ClCompile Include="src\Utilities\Stream.cpp" />
@@ -231,6 +232,8 @@
     <ClCompile Include="YRpp\StaticInits.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Utilities\SyncGuard.h" />
+    <ClInclude Include="src\Utilities\EVADetour.h" />
     <ClInclude Include="src\Ext\EBolt\Body.h" />
     <ClInclude Include="src\Ext\Sidebar\SWSidebar\UISafeOps.h" />
     <ClInclude Include="src\Misc\AnimationBudget.h" />
@@ -322,6 +325,7 @@
     <ClInclude Include="src\Ext\VoxelAnimType\Body.h" />
     <ClInclude Include="src\Ext\VoxelAnim\Body.h" />
     <ClInclude Include="src\Ext\WeaponType\Body.h" />
+    <ClInclude Include="src\Utilities\EVAGuard.h" />
     <ClInclude Include="src\Utilities\Savegame.h" />
     <ClInclude Include="src\Utilities\SavegameDef.h" />
     <ClInclude Include="src\Utilities\ShapeTextPrinter.h" />
