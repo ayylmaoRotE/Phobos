@@ -936,10 +936,18 @@ DEFINE_HOOK(0x4555E4, BuildingClass_IsPowerOnline_Overpower, 0x6)
 #pragma region AircraftFactory_RallyPoint
 
 bool FakeBuildingClass::_IsFactory() {
-	// Extended IsFactory logic: include AircraftType + original check
-	return this->Type->Factory == AbstractType::AircraftType || this->Type->Factory != AbstractType::None;
+	// Extended IsFactory logic: include AircraftType + original check, but allow disabling via tag
+	if (this->Type->Factory == AbstractType::AircraftType)
+	{
+		auto const pTypeExt = BuildingTypeExt::ExtMap.Find(this->Type);
+		if (pTypeExt && pTypeExt->Factory_EnableRallyPoint.Get())
+			return true;
+		else
+			return false; // AircraftType factory but rally points disabled
+	}
+	
+	return this->Type->Factory != AbstractType::None;
 }
-
 DEFINE_FUNCTION_JUMP(VTABLE, 0x7E4140, FakeBuildingClass::_IsFactory);
 
 #pragma endregion

@@ -73,6 +73,8 @@ public:
 		ValueableVector<TechnoTypeClass*> FactoryPlant_AllowTypes;
 		ValueableVector<TechnoTypeClass*> FactoryPlant_DisallowTypes;
 
+		Valueable<bool> Factory_EnableRallyPoint;
+
 		Nullable<double> Units_RepairRate;
 		Nullable<int> Units_RepairStep;
 		Nullable<double> Units_RepairPercent;
@@ -145,6 +147,8 @@ public:
 			, AircraftDockingDirs {}
 			, FactoryPlant_AllowTypes {}
 			, FactoryPlant_DisallowTypes {}
+
+			, Factory_EnableRallyPoint { true }
 			, IsAnimDelayedBurst { true }
 			, IsDestroyableObstacle { false }
 			, Units_RepairRate {}
