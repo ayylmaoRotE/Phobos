@@ -954,19 +954,26 @@ DEFINE_HOOK(0x4555E4, BuildingClass_IsPowerOnline_Overpower, 0x6)
 	return overPower < keepOnline ? LowPower : (R->Origin() == 0x4555E4 ? Continue1 : Continue2);
 }
 
-// You’re already hooking here:
+constexpr ptrdiff_t kRecheckItemsOff = 0x5778;
+
 DEFINE_HOOK(0x446A75, BuildingClass_GrandOpening_OnBuilt, 0x5)
 {
 	GET(BuildingClass*, pThis, EBP);
 
-	// Recreate the overwritten instruction
-	R->ECX(pThis);                 // mov ecx, ebp
+	// restore the clobbered 'mov ecx, ebp'
+	R->ECX(pThis);
 
-	// Our code
+	// vanilla: [edx+RecheckItems] = 1, where edx == pThis->Owner
+	if (auto* const owner = pThis->Owner)
+	{
+		*reinterpret_cast<uint8_t*>(reinterpret_cast<uint8_t*>(owner) + kRecheckItemsOff) = 1;
+		// (not strictly required, but mirrors the original register state)
+		R->EDX(owner);
+	}
+
+	// your code
 	Contracts::OnBuilt(pThis);
 
-	// IMPORTANT: skip the *entire* 7-byte store at 0x446A77.
-	// Continue at 0x446A7E (right after it), which is:
-	//   mov eax, [ebp+21Ch]
-	return 0x446A7E;
+	// continue right after the 7-byte store we replaced
+	return 0x446A7E; // mov eax, [ebp+21Ch]
 }
