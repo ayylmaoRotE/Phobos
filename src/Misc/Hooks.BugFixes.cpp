@@ -81,6 +81,42 @@ DEFINE_HOOK(0x62AA32, ParasiteClass_TryInfect_MissBehaviorFix, 0x5)
 	return 0;
 }
 
+#pragma region CellThreatCrashGuard
+// Guard MapClass::Cell_Threat() against invalid 'who' (HouseClass*) and negative index.
+// Original faulting instruction @ 0x56BD33:
+//   mov eax, [edx + ecx*4 + 0x59F0]
+// EDX = who (HouseClass*), ECX = computed cell index
+// We validate both and return 0 (no threat) on bad input, then tail out with the function's epilogue.
+
+DEFINE_HOOK(0x56BD33, MapClass_Cell_Threat_SafeRead, 0x7)
+{
+	GET(HouseClass*, who, EDX);
+	GET(int, idx, ECX);
+
+	// 1) make sure the pointer is a House
+	const bool houseOK = (who != nullptr) && (who->WhatAmI() == AbstractType::House);
+
+	// 2) clamp the index (ThreatPosedEstimates is 130x130 ints)
+	constexpr int kThreatW = 130;
+	constexpr int kThreatH = 130;
+	constexpr int kThreatSize = kThreatW * kThreatH;
+	const bool idxOK = (idx >= 0) && (idx < kThreatSize);
+
+	if (!houseOK || !idxOK)
+	{
+		R->EAX(0);          // treat as no threat
+		return 0x56BD3A;    // retn 8 (original epilogue)
+	}
+
+	// vanilla does: mov eax, [edx + 0x59F0] ; then [eax + ecx*4]
+	const auto base = reinterpret_cast<const int*>(
+		reinterpret_cast<const char*>(who) + 0x59F0
+	);
+	R->EAX(base[idx]);
+	return 0x56BD3A;        // retn 8
+}
+#pragma endregion CellThreatCrashGuard
+
 // WWP's shit code! Wrong check.
 // To avoid units dying when they are already dead.
 DEFINE_HOOK(0x5F53AA, ObjectClass_ReceiveDamage_DyingFix, 0x6)
