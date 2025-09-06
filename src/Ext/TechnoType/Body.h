@@ -19,6 +19,7 @@
 
 class Matrix3D;
 class ParticleSystemTypeClass;
+
 class TechnoTypeExt
 {
 public:
@@ -850,6 +851,10 @@ public:
 
 		void FireExtraWeapons(TechnoClass* pThis, AbstractClass* pTarget, int weaponIndex) const;
 		static bool ExtraFireInProgress;
+		
+		// Optimized ExtraFire helper functions
+		const std::vector<WeaponTypeClass*>* GetExtraFireWeapons(int weaponIndex, bool isElite) const;
+		CoordStruct GetExtraFireFLH(int weaponIndex, bool isElite) const;
 
 		virtual ~ExtData() = default;
 		virtual void LoadFromINIFile(CCINIClass* pINI) override;

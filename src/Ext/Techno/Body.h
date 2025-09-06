@@ -90,10 +90,15 @@ public:
 
 		int AttackMoveFollowerTempCount;
 
-		// ExtraFire ROF timers - not serialized, reset on load
-		std::map<WeaponTypeClass*, CDTimerClass> ExtraFireTimers;
-
 		std::unique_ptr<GiftBox> MyGiftBox;
+
+		// ExtraFire ROF timers - optimized flat storage, not serialized
+		struct ExtraFireTimer {
+			WeaponTypeClass* Weapon;
+			CDTimerClass Timer;
+			ExtraFireTimer(WeaponTypeClass* weapon) : Weapon(weapon), Timer() {}
+		};
+		std::vector<ExtraFireTimer> ExtraFireTimers;
 		bool AircraftOpentoppedInitEd;
 
 		ExtData(TechnoClass* OwnerObject) : Extension<TechnoClass>(OwnerObject)
