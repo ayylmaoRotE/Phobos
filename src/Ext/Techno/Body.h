@@ -135,8 +135,13 @@ public:
 
 		std::unique_ptr<GiftBox> MyGiftBox;
 
-		// ExtraFire ROF timers - not serialized, reset on load
-		std::map<WeaponTypeClass*, CDTimerClass> ExtraFireTimers;
+		// ExtraFire ROF timers - optimized flat storage, not serialized
+		struct ExtraFireTimer {
+			WeaponTypeClass* Weapon;
+			CDTimerClass Timer;
+			ExtraFireTimer(WeaponTypeClass* weapon) : Weapon(weapon), Timer() {}
+		};
+		std::vector<ExtraFireTimer> ExtraFireTimers;
 		
 		bool AircraftOpentoppedInitEd;
 
