@@ -1286,84 +1286,105 @@ void TechnoTypeExt::ExtData::FireExtraWeapons(TechnoClass* pThis, AbstractClass*
 	if (!pThis || !pTarget || ExtraFireInProgress)
 		return;
 
-
 	// Set guard to prevent recursion
 	ExtraFireInProgress = true;
 
 	const bool isElite = pThis->Veterancy.IsElite();
-	std::vector<WeaponTypeClass*> extraWeapons;
-
-	// Determine which ExtraFire weapons to use based on weapon index and elite status
-	if (weaponIndex == 0) // Primary weapon
-	{
-		if (isElite && !this->ExtraFire_ElitePrimary.empty())
-			extraWeapons = this->ExtraFire_ElitePrimary;
-		else if (!this->ExtraFire_Primary.empty())
-			extraWeapons = this->ExtraFire_Primary;
-	}
-	else if (weaponIndex == 1) // Secondary weapon  
-	{
-		if (isElite && !this->ExtraFire_EliteSecondary.empty())
-			extraWeapons = this->ExtraFire_EliteSecondary;
-		else if (!this->ExtraFire_Secondary.empty())
-			extraWeapons = this->ExtraFire_Secondary;
-	}
-
-	// Fire each ExtraFire weapon
 	auto pTechnoExt = TechnoExt::ExtMap.Find(pThis);
-	for (auto pWeapon : extraWeapons)
-	{
-		if (pWeapon)
-		{
-			// Check ROF timer for this specific ExtraFire weapon
-			auto& timer = pTechnoExt->ExtraFireTimers[pWeapon];
-			if (!timer.Expired())
-				continue; // Skip this weapon if ROF hasn't elapsed
-			
-			// Start ROF timer for this weapon
-			timer.Start(pWeapon->ROF);
-			
-			// Temporarily store the original weapon and FLH
-			auto originalWeapon = pThis->GetWeapon(weaponIndex);
-			WeaponTypeClass* originalWeaponType = originalWeapon ? originalWeapon->WeaponType : nullptr;
-			CoordStruct originalFLH = originalWeapon ? originalWeapon->FLH : CoordStruct{0,0,0};
-			
-			// Get the appropriate ExtraFire FLH
-			CoordStruct extraFireFLH = {0,0,0};
-			if (weaponIndex == 0) // Primary weapon
-			{
-				if (isElite && this->ExtraFire_ElitePrimaryFLH.isset())
-					extraFireFLH = this->ExtraFire_ElitePrimaryFLH.Get();
-				else
-					extraFireFLH = this->ExtraFire_PrimaryFLH.Get();
-			}
-			else if (weaponIndex == 1) // Secondary weapon
-			{
-				if (isElite && this->ExtraFire_EliteSecondaryFLH.isset())
-					extraFireFLH = this->ExtraFire_EliteSecondaryFLH.Get();
-				else
-					extraFireFLH = this->ExtraFire_SecondaryFLH.Get();
-			}
-			
-			// Temporarily replace the weapon and FLH with the ExtraFire weapon
-			if (originalWeapon)
-			{
-				originalWeapon->WeaponType = pWeapon;
-				originalWeapon->FLH = extraFireFLH;
-				
-				// Use the game's built-in firing mechanism
-				pThis->Fire(pTarget, weaponIndex);
-				
-				// Restore the original weapon and FLH
-				originalWeapon->WeaponType = originalWeaponType;
-				originalWeapon->FLH = originalFLH;
-			}
-		}
+	
+	// Get weapons list by reference (no copy)
+	const auto* weaponsList = GetExtraFireWeapons(weaponIndex, isElite);
+	if (!weaponsList || weaponsList->empty()) {
+		ExtraFireInProgress = false;
+		return;
 	}
 	
-	// Clear guard
+	// Cache weapon pointer and original values once (avoid repeated lookups)
+	auto* const originalWeapon = pThis->GetWeapon(weaponIndex);
+	if (!originalWeapon) {
+		ExtraFireInProgress = false;
+		return;
+	}
+	
+	WeaponTypeClass* const originalWeaponType = originalWeapon->WeaponType;
+	const CoordStruct originalFLH = originalWeapon->FLH;
+	const CoordStruct extraFireFLH = GetExtraFireFLH(weaponIndex, isElite);
+	
+	// Fire each ExtraFire weapon with optimized swapping
+	for (auto* pWeapon : *weaponsList) {
+		if (!pWeapon) continue;
+		
+		// Fast timer lookup with linear search (better for small collections)
+		CDTimerClass* timer = nullptr;
+		auto& timers = pTechnoExt->ExtraFireTimers;
+		
+		// Linear search (typically 1-4 weapons, faster than map lookup)
+		for (auto& entry : timers) {
+			if (entry.Weapon == pWeapon) {
+				timer = &entry.Timer;
+				break;
+			}
+		}
+		
+		// Create new timer if not found
+		if (!timer) {
+			timers.emplace_back(pWeapon);
+			timer = &timers.back().Timer;
+		}
+		
+		if (!timer->Expired()) continue;
+		
+		// Start ROF timer
+		timer->Start(pWeapon->ROF);
+		
+		// Optimized weapon swapping - minimal state changes
+		originalWeapon->WeaponType = pWeapon;
+		originalWeapon->FLH = extraFireFLH;
+		
+		// Fire weapon (still expensive but necessary for proper projectile creation)
+		pThis->Fire(pTarget, weaponIndex);
+		
+		// Immediate restore to minimize inconsistent state time
+		originalWeapon->WeaponType = originalWeaponType;
+		originalWeapon->FLH = originalFLH;
+	}
+	
 	ExtraFireInProgress = false;
 }
+
+// Optimized ExtraFire helper functions
+const std::vector<WeaponTypeClass*>* TechnoTypeExt::ExtData::GetExtraFireWeapons(int weaponIndex, bool isElite) const
+{
+	if (weaponIndex == 0) { // Primary weapon
+		if (isElite && !this->ExtraFire_ElitePrimary.empty())
+			return static_cast<const std::vector<WeaponTypeClass*>*>(&this->ExtraFire_ElitePrimary);
+		else if (!this->ExtraFire_Primary.empty())
+			return static_cast<const std::vector<WeaponTypeClass*>*>(&this->ExtraFire_Primary);
+	}
+	else if (weaponIndex == 1) { // Secondary weapon
+		if (isElite && !this->ExtraFire_EliteSecondary.empty())
+			return static_cast<const std::vector<WeaponTypeClass*>*>(&this->ExtraFire_EliteSecondary);
+		else if (!this->ExtraFire_Secondary.empty())
+			return static_cast<const std::vector<WeaponTypeClass*>*>(&this->ExtraFire_Secondary);
+	}
+	return nullptr;
+}
+
+CoordStruct TechnoTypeExt::ExtData::GetExtraFireFLH(int weaponIndex, bool isElite) const
+{
+	if (weaponIndex == 0) { // Primary weapon
+		return (isElite && this->ExtraFire_ElitePrimaryFLH.isset()) 
+			? this->ExtraFire_ElitePrimaryFLH.Get()
+			: this->ExtraFire_PrimaryFLH.Get();
+	}
+	else if (weaponIndex == 1) { // Secondary weapon
+		return (isElite && this->ExtraFire_EliteSecondaryFLH.isset())
+			? this->ExtraFire_EliteSecondaryFLH.Get() 
+			: this->ExtraFire_SecondaryFLH.Get();
+	}
+	return {0, 0, 0};
+}
+
 
 template <typename T>
 void TechnoTypeExt::ExtData::Serialize(T& Stm)
