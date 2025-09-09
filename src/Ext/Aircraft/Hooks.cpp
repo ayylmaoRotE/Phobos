@@ -233,8 +233,20 @@ DEFINE_FUNCTION_JUMP(CALL6, 0x418AF1, AircraftClass_SelectWeapon_Wrapper);
 static int GetDelay(AircraftClass* pThis, bool isLastShot)
 {
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
-	auto const pWeapon = pThis->GetWeapon(pExt->CurrentAircraftWeaponIndex)->WeaponType;
+	if (!pExt) return 60; // safe fallback
+	
+	// Use SelectWeapon to get current weapon index if needed
+	int weaponIndex = pExt->CurrentAircraftWeaponIndex;
+	if (weaponIndex < 0)
+		weaponIndex = pThis->SelectWeapon(pThis->Target);
+	
+	auto const pWeaponStruct = pThis->GetWeapon(weaponIndex);
+	if (!pWeaponStruct || !pWeaponStruct->WeaponType) return 60; // safe fallback
+	
+	auto const pWeapon = pWeaponStruct->WeaponType;
 	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
+	if (!pWeaponExt) return pWeapon->ROF; // fallback to basic ROF
+	
 	int delay = pWeapon->ROF;
 
 	if (isLastShot || pExt->Strafe_BombsDroppedThisRound == pWeaponExt->Strafing_Shots.Get(5) || (pWeaponExt->Strafing_UseAmmoPerShot && !pThis->Ammo))
