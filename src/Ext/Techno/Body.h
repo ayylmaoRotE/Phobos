@@ -26,6 +26,16 @@ public:
 	class ExtData final : public Extension<TechnoClass>
 	{
 	public:
+		static void FireWeapon(AircraftClass* pThis, AbstractClass* pTarget);
+		static bool PlaceReinforcementAircraft(AircraftClass* pThis, CellStruct edgeCell);
+		static DirType GetLandingDir(AircraftClass* pThis, BuildingClass* pDock = nullptr);
+
+		uintptr_t DockCommit_LastDock = 0;
+		uint8_t   DockCommit_Cooldown = 0;
+		uint8_t   DockCommit_Latched = 0;
+
+		// NEW: pad we pin while RTB so the airport can’t steal it mid-approach
+		BuildingClass* DockPinned = nullptr;
 		TechnoTypeExt::ExtData* TypeExtData;
 		std::unique_ptr<ShieldClass> Shield;
 		std::vector<std::unique_ptr<LaserTrailClass>> LaserTrails;

@@ -12,6 +12,7 @@
 #include <Ext/Rules/Body.h>
 #include <UnitClass.h>
 #include <New/AnonymousType/GiftBoxFunctional.h>
+#include <Utilities/EVAGuard.h>
 
 namespace ReceiveDamageTemp
 {
@@ -135,7 +136,8 @@ DEFINE_HOOK(0x701900, TechnoClass_ReceiveDamage_Shield, 0x6)
 				index = pTypeExt->CombatAlert_EVA.Get(VoxClass::FindIndex((const char*)"EVA_UnitsInCombat"));
 
 			if (index != -1)
-				VoxClass::PlayIndex(index);
+				//VoxClass::PlayIndex(index);
+				PlayIndex_Safe(index, -1, -1);
 		};
 		raiseCombatAlert();
 	}

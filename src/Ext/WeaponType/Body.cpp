@@ -492,22 +492,35 @@ int WeaponTypeExt::GetTechnoKeepRange(WeaponTypeClass* pThis, TechnoClass* pFire
 
 	if (!pFirer->RearmTimer.InProgress())
 	{
-		const auto spawnManager = pFirer->SpawnManager;
+		 // Clamp to actual node count to avoid OOB; be null-safe per node.
 
+		auto* const spawnManager = pFirer->SpawnManager;
 		if (!spawnManager || spawnManager->Status != SpawnManagerStatus::CoolDown)
-			return 0;
-
-		const auto spawnsNumber = pFirer->GetTechnoType()->SpawnsNumber;
-
-		for (int i = 0; i < spawnsNumber; i++)
 		{
-			const auto status = spawnManager->SpawnedNodes[i]->Status;
+			return 0;
+		}
 
-			if (status == SpawnNodeStatus::TakeOff || status == SpawnNodeStatus::Returning)
+		const int spawnsNumber = pFirer->GetTechnoType()->SpawnsNumber;
+
+		// Clamp to actual node count to avoid OOB; be null-safe per node.
+		const int available = static_cast<int>(spawnManager->SpawnedNodes.Count); // DynamicVectorClass
+		const int limit = (spawnsNumber < available) ? spawnsNumber : available;
+
+		for (int i = 0; i < limit; ++i)
+		{
+			const auto* node = spawnManager->SpawnedNodes[i];
+			if (!node)
+			{
+				continue; // never deref a transient null slot in MP
+			}
+
+			const auto nodeStatus = node->Status;
+			if (nodeStatus == SpawnNodeStatus::TakeOff || nodeStatus == SpawnNodeStatus::Returning)
+			{
 				return 0;
+			}
 		}
 	}
-
 	if (isMinimum)
 		return (keepRange > 0) ? keepRange : 0;
 

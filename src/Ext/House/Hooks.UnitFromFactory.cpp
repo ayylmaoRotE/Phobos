@@ -5,11 +5,13 @@
 #include <Utilities/EnumFunctions.h>
 #include <Utilities/GeneralUtils.h>
 #include <Utilities/Macro.h>
+#include <Utilities/EVAGuard.h>
 
 DEFINE_HOOK(0x4FB63A, HouseClass_UnitFromFactory_DisablingEVAUnitReady, 0xF)
 {
 	if (!RulesExt::Global()->IsVoiceCreatedGlobal.Get())
-		VoxClass::Play(GameStrings::EVA_UnitReady);
+		//VoxClass::Play(GameStrings::EVA_UnitReady);
+		PlayName_Safe(GameStrings::EVA_UnitReady, -1, -1);
 
 	return 0x4FB649;
 }

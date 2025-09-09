@@ -11,6 +11,7 @@
 #include <HouseClass.h>
 #include <RadarEventClass.h>
 #include <TacticalClass.h>
+#include <Utilities/EVAGuard.h>
 
 std::vector<ShieldClass*> ShieldClass::Array;
 
@@ -340,7 +341,8 @@ void ShieldClass::ResponseAttack()
 		{
 			const auto pos = pUnit->GetDestination(pUnit);
 			if (RadarEventClass::Create(RadarEventType::HarvesterAttacked, CellClass::Coord2Cell(pos)))
-				VoxClass::Play(GameStrings::EVA_OreMinerUnderAttack);
+				//VoxClass::Play(GameStrings::EVA_OreMinerUnderAttack);
+				PlayName_Safe(GameStrings::EVA_OreMinerUnderAttack, -1, -1);
 		}
 	}
 }
