@@ -10,12 +10,8 @@
 
 void AircraftExt::FireWeapon(AircraftClass* pThis, AbstractClass* pTarget)
 {
-	auto weaponIndex = TechnoExt::ExtMap.Find(pThis)->CurrentAircraftWeaponIndex;
-
-	if (weaponIndex < 0)
-		weaponIndex = pThis->SelectWeapon(pTarget);
-
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
+	int weaponIndex = pExt->CurrentAircraftWeaponIndex;
 	auto const pWeapon = pThis->GetWeapon(weaponIndex)->WeaponType;
 	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
 	const int burstCount = pWeapon->Burst;
@@ -125,4 +121,20 @@ DirType AircraftExt::GetLandingDir(AircraftClass* pThis, BuildingClass* pDock)
 		return pThis->PrimaryFacing.Current().GetDir();
 
 	return static_cast<DirType>(std::clamp(landingDir, 0, 255));
+}
+
+bool AircraftExt::IsValidLandingZone(AircraftClass* pThis)
+{
+	if (const auto pPassanger = pThis->Passengers.GetFirstPassenger())
+	{
+		if (const auto pDest = pThis->Destination)
+		{
+			const auto pDestCell = MapClass::Instance.GetCellAt(pDest->GetCoords());
+
+			return pDestCell->IsClearToMove(pPassanger->GetTechnoType()->SpeedType, false, false, static_cast<int>(ZoneType::None), pPassanger->GetTechnoType()->MovementZone, -1, false)
+				&& pDestCell->OverlayTypeIndex == -1;
+		}
+	}
+
+	return false;
 }

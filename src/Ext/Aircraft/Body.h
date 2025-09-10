@@ -9,4 +9,5 @@ public:
 	static void FireWeapon(AircraftClass* pThis, AbstractClass* pTarget);
 	static bool PlaceReinforcementAircraft(AircraftClass* pThis, CellStruct edgeCell);
 	static DirType GetLandingDir(AircraftClass* pThis, BuildingClass* pDock = nullptr);
+	static bool IsValidLandingZone(AircraftClass* pThis);
 };
