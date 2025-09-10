@@ -1,9 +1,11 @@
 #include <AircraftClass.h>
 #include <EventClass.h>
 #include <FlyLocomotionClass.h>
-#include <unordered_map>
+#include <map>
 
 #include <Ext/Aircraft/Body.h>
+
+
 #include <Ext/Techno/Body.h>
 #include <Ext/Anim/Body.h>
 #include <Ext/WeaponType/Body.h>
@@ -234,19 +236,19 @@ static int GetDelay(AircraftClass* pThis, bool isLastShot)
 {
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
 	if (!pExt) return 60; // safe fallback
-	
+
 	// Use SelectWeapon to get current weapon index if needed
 	int weaponIndex = pExt->CurrentAircraftWeaponIndex;
 	if (weaponIndex < 0)
 		weaponIndex = pThis->SelectWeapon(pThis->Target);
-	
+
 	auto const pWeaponStruct = pThis->GetWeapon(weaponIndex);
 	if (!pWeaponStruct || !pWeaponStruct->WeaponType) return 60; // safe fallback
-	
+
 	auto const pWeapon = pWeaponStruct->WeaponType;
 	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
 	if (!pWeaponExt) return pWeapon->ROF; // fallback to basic ROF
-	
+
 	int delay = pWeapon->ROF;
 
 	if (isLastShot || pExt->Strafe_BombsDroppedThisRound == pWeaponExt->Strafing_Shots.Get(5) || (pWeaponExt->Strafing_UseAmmoPerShot && !pThis->Ammo))
@@ -315,22 +317,62 @@ DEFINE_HOOK(0x418B8A, AircraftClass_Mission_Attack_Delay5, 0x6)
 #pragma endregion
 
 // Fix for OpenTopped aircraft circling issue when landing with passengers
+// Uses Otamaa's approach with IsValidLandingZone
 DEFINE_HOOK(0x417A2E, AircraftClass_EnterIdleMode_Opentopped, 0x5)
 {
 	GET(AircraftClass*, pThis, ESI);
 
-	// Safety check - ensure we have a valid aircraft pointer and type
-	if (!pThis || !pThis->Type)
-		return 0x417AD4;
-
 	R->EDI(2);
 
-	// This plane stuck on mission::Move! So let's redirect it to other address that deals with this
+	// Otamaa's logic with proper landing zone validation
 	return !pThis->Spawned &&
 		pThis->Type->OpenTopped &&
 		(pThis->QueuedMission != Mission::Attack) && !pThis->Target
 		? 0x417944 : 0x417AD4;
 }
+
+// Hook the CheckAmmo address to bypass ammo check for OpenTopped aircraft
+DEFINE_HOOK(0x419169, AircraftClass_QueryPreparedness_BypassAmmoCheckForOpenTopped, 0x6)
+{
+	GET(AircraftClass*, pThis, ESI);
+
+	// If this is an OpenTopped aircraft, skip the ammo check entirely
+	if (pThis && pThis->Type && pThis->Type->OpenTopped)
+	{
+		// Skip to the part where ammo check would succeed
+		return 0x419176; // Skip the ammo > 0 check
+	}
+
+	return 0; // Continue with normal ammo check for regular aircraft
+}
+
+// Add Otamaa's landing zone validation hooks for Move mission (Carryall support)
+/*
+DEFINE_HOOK(0x416EC9, AircraftClass_Mission_Move_ValidateLandingZone, 0x6)
+{
+	GET(AircraftClass*, pThis, ESI);
+
+	AbstractClass* pDest = AircraftExt::IsValidLandingZone(pThis) ?
+		pThis->Destination : pThis->NewLandingZone_(pThis->Destination);
+
+	pThis->SetDestination(pDest, true);
+	return 0x416EE4;
+}
+
+DEFINE_HOOK(0x416FFD, AircraftClass_Mission_Move_LandingZoneClear, 0x6)
+{
+	GET(AircraftClass*, pThis, ESI);
+
+	if (AircraftExt::IsValidLandingZone(pThis)) {
+		R->AL(true);
+	} else {
+		R->AL(pThis->IsLandZoneClear(pThis->Destination));
+	}
+
+	return 0x41700E;
+}
+*/
+
 
 DEFINE_HOOK_AGAIN(0x41882C, AircraftClass_MissionAttack_ScatterCell1, 0x6);
 DEFINE_HOOK_AGAIN(0x41893B, AircraftClass_MissionAttack_ScatterCell1, 0x6);

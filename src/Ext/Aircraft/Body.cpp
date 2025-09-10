@@ -122,3 +122,19 @@ DirType AircraftExt::GetLandingDir(AircraftClass* pThis, BuildingClass* pDock)
 
 	return static_cast<DirType>(std::clamp(landingDir, 0, 255));
 }
+
+bool AircraftExt::IsValidLandingZone(AircraftClass* pThis)
+{
+	if (const auto pPassanger = pThis->Passengers.GetFirstPassenger())
+	{
+		if (const auto pDest = pThis->Destination)
+		{
+			const auto pDestCell = MapClass::Instance.GetCellAt(pDest->GetCoords());
+
+			return pDestCell->IsClearToMove(pPassanger->GetTechnoType()->SpeedType, false, false, static_cast<int>(ZoneType::None), pPassanger->GetTechnoType()->MovementZone, -1, false)
+				&& pDestCell->OverlayTypeIndex == -1;
+		}
+	}
+
+	return false;
+}
