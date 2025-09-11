@@ -946,6 +946,14 @@ bool FakeBuildingClass::_IsFactory() {
 			return false; // AircraftType factory but rally points disabled
 	}
 	
+	// Handle cloning vats explicitly (they have Factory=None but should support rally points)
+	if (this->Type->Cloning)
+	{
+		auto const pTypeExt = BuildingTypeExt::ExtMap.Find(this->Type);
+		return pTypeExt && pTypeExt->Factory_EnableRallyPoint.Get();
+	}
+	
+	// For other non-aircraft factories, use original vanilla logic
 	return this->Type->Factory != AbstractType::None;
 }
 DEFINE_FUNCTION_JUMP(VTABLE, 0x7E4140, FakeBuildingClass::_IsFactory);
