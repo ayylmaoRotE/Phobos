@@ -74,6 +74,7 @@ public:
 		ValueableVector<TechnoTypeClass*> FactoryPlant_DisallowTypes;
 
 		Valueable<bool> Factory_EnableRallyPoint;
+		Valueable<bool> CloningFacility;
 
 		Nullable<double> Units_RepairRate;
 		Nullable<int> Units_RepairStep;
@@ -149,6 +150,7 @@ public:
 			, FactoryPlant_DisallowTypes {}
 
 			, Factory_EnableRallyPoint { true }
+			, CloningFacility { false }
 			, IsAnimDelayedBurst { true }
 			, IsDestroyableObstacle { false }
 			, Units_RepairRate {}

@@ -173,6 +173,7 @@ void BuildingTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->FactoryPlant_DisallowTypes.Read(exINI, pSection, "FactoryPlant.DisallowTypes");
 
 	this->Factory_EnableRallyPoint.Read(exINI, pSection, "Factory.EnableRallyPoint");
+	this->CloningFacility.Read(exINI, pSection, "CloningFacility");
 
 	this->Units_RepairRate.Read(exINI, pSection, "Units.RepairRate");
 	this->Units_RepairStep.Read(exINI, pSection, "Units.RepairStep");
@@ -321,6 +322,7 @@ void BuildingTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->FactoryPlant_AllowTypes)
 		.Process(this->FactoryPlant_DisallowTypes)
 		.Process(this->Factory_EnableRallyPoint)
+		.Process(this->CloningFacility)
 		.Process(this->IsAnimDelayedBurst)
 		.Process(this->IsDestroyableObstacle)
 		.Process(this->Units_RepairRate)

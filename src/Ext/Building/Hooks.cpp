@@ -953,6 +953,13 @@ bool FakeBuildingClass::_IsFactory() {
 		return pTypeExt && pTypeExt->Factory_EnableRallyPoint.Get();
 	}
 	
+	// Handle CloningFacility=yes the same as Cloning=yes (Ares feature for vehicle cloning)
+	auto const pTypeExt = BuildingTypeExt::ExtMap.Find(this->Type);
+	if (pTypeExt && pTypeExt->CloningFacility.Get())
+	{
+		return pTypeExt->Factory_EnableRallyPoint.Get();
+	}
+	
 	// For other non-aircraft factories, use original vanilla logic
 	return this->Type->Factory != AbstractType::None;
 }
