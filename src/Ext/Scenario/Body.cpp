@@ -3,6 +3,8 @@
 #include <New/Contracts/ContractBountyManager.h>
 #include <SessionClass.h>
 #include <VeinholeMonsterClass.h>
+#include <New/Contracts/ContractBountyManager.h>
+#include <New/Contracts/Contracts.Save.h>
 
 std::unique_ptr<ScenarioExt::ExtData> ScenarioExt::Data = nullptr;
 
@@ -175,12 +177,28 @@ void ScenarioExt::ExtData::LoadFromStream(PhobosStreamReader& Stm)
 {
 	Extension<ScenarioClass>::LoadFromStream(Stm);
 	this->Serialize(Stm);
+
+	uint32_t tag = 0;
+	if (Savegame::ReadPhobosStream(Stm, tag) && tag == Contracts::ContractsSave::Tag)
+	{
+		Contracts::ContractsSave snap;
+		// Pass 'true' if you want Phobos to track changes; harmless either way here
+		Savegame::ReadPhobosStream(Stm, snap, /*RegisterForChange=*/true);
+		Contracts::Manager::Instance().ApplyFromSave(snap);
+	}
 }
 
 void ScenarioExt::ExtData::SaveToStream(PhobosStreamWriter& Stm)
 {
 	Extension<ScenarioClass>::SaveToStream(Stm);
 	this->Serialize(Stm);
+
+	// --- Contracts: append one tagged block (relative timers snapshot) ---
+	{
+		const auto snap = Contracts::Manager::Instance().CaptureForSave();
+		Savegame::WritePhobosStream(Stm, Contracts::ContractsSave::Tag);
+		Savegame::WritePhobosStream(Stm, snap);
+	}
 }
 
 // =============================

@@ -853,7 +853,6 @@ public:
 
 		void FireExtraWeapons(TechnoClass* pThis, AbstractClass* pTarget, int weaponIndex) const;
 		static bool ExtraFireInProgress;
-		
 		// Optimized ExtraFire helper functions
 		const std::vector<WeaponTypeClass*>* GetExtraFireWeapons(int weaponIndex, bool isElite) const;
 		CoordStruct GetExtraFireFLH(int weaponIndex, bool isElite) const;

@@ -36,6 +36,7 @@
     <ClCompile Include="src\New\AISell\AIHPSell.cpp" />
     <ClCompile Include="src\New\Contracts\ContractBountyManager.cpp" />
     <ClCompile Include="src\New\Contracts\ContractEvents.cpp" />
+    <ClCompile Include="src\New\Contracts\Contracts.Save.cpp" />
     <ClCompile Include="src\New\Type\Affiliated\CreateUnitTypeClass.cpp" />
     <ClCompile Include="src\Blowfish\blowfish.cpp" />
     <ClCompile Include="src\Blowfish\Hooks.Blowfish.cpp" />
@@ -232,6 +233,7 @@
     <ClCompile Include="YRpp\StaticInits.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\New\Contracts\Contracts.Save.h" />
     <ClInclude Include="src\Utilities\SyncGuard.h" />
     <ClInclude Include="src\Utilities\EVADetour.h" />
     <ClInclude Include="src\Ext\EBolt\Body.h" />

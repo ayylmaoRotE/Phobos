@@ -16,6 +16,7 @@
 #include <SuperWeaponTypeClass.h>
 #include <TechnoTypeClass.h>
 #include <GeneralDefinitions.h>
+#include <New/Contracts/Contracts.Save.h>
 
 
 class MessageListClass; 
@@ -37,6 +38,9 @@ namespace Contracts
 		std::wstring textTemplate;
 		int orderIndex = 0;
 		std::string id;
+		std::string soundID;     // INI name, e.g. EVA_ContractStart
+		int soundIndex = -1; // resolved once; -1 = none
+		int availableAfter = 0;    // number of elapsed contracts (epochs) before this can roll
 	};
 
 	struct RewardDef
@@ -50,6 +54,8 @@ namespace Contracts
 		int orderIndex = 0;
 		std::string id;
 		std::wstring rewardText;
+		std::string soundID;     // INI name, e.g. EVA_CashIn
+		int         soundIndex = -1; // resolved once via VocClass::FindIndex; -1 = none
 	};
 
 	struct Competitor
@@ -83,7 +89,10 @@ namespace Contracts
 		bool     MatchSeedCaptured = false;
 		void CaptureMatchSeedIfDue(int64_t anchorFrame);
 
+		int64_t intermissionEndFrame = -1;   // < 0 = no intermission active
+		int     intermissionFrames = 15 * 45; // default 45s, same as your banner
 
+		int pendingStartSoundIndex = -1;
 		// Deterministic start/sync from a shared anchor (handles late defs gracefully).
 		void StartOrSyncFromAnchor(int64_t anchorFrame);
 	
@@ -118,7 +127,18 @@ namespace Contracts
 		void OnMoney(HouseClass* house, int amount);
 		void NormalizeDefinitions();
 		void InitMatchSeed();
-		
+		void BeginIntermissionNow();
+
+		ContractsSave CaptureForSave() const;
+		void ApplyFromSave(const ContractsSave& s);
+
+		struct PendingSW { int ownerIdx; int typeIdx; int expireFramesLeft; };
+		std::vector<PendingSW> PendingTransientSWs;
+		bool PendingApplyAfterLoad = false;
+
+		std::vector<std::vector<int>> PendingTeamsMembersIdx;
+		std::vector<std::pair<int, int>> PendingMoneyByHouse;
+
 	private:
 		// parsing
 		void parseContracts(CCINIClass* ini);
@@ -137,7 +157,6 @@ namespace Contracts
 
 		// helpers
 		static COLORREF colorOfHouse(HouseClass* h);
-		
 
 		// data
 		public:std::vector<ContractDef> Contracts;

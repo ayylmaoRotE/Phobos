@@ -449,6 +449,26 @@ DEFINE_HOOK(0x4F92FB, HouseClass_UpdateTechTree_SWSidebar, 0x7)
 
 	if (pHouse->IsCurrentPlayer())
 	{
+		// Close sidebar when player is defeated
+		if (pHouse->Defeated && SWSidebarClass::IsEnabled())
+		{
+			ScenarioExt::Global()->SWSidebar_Enable = false;
+
+			const auto& columns = SWSidebarClass::Instance.Columns;
+			for (const auto& pColumn : columns)
+			{
+				pColumn->Disabled = true;
+				const auto& buttons = pColumn->Buttons;
+
+				for (const auto& pButton : buttons)
+					pButton->Disabled = true;
+			}
+
+			if (const auto pToggle = SWSidebarClass::Instance.ToggleButton)
+				pToggle->UpdatePosition();
+		}
+
+
 		SWSidebarClass::RecheckCameo();
 
 		// Re-add to main sidebar for SW.AuxTechnos.Required that just became available

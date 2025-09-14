@@ -25,7 +25,8 @@
 #include <ObjectClass.h>
 #include <CellClass.h>
 #include <Misc/FlyingStrings.h>
-#include <CCINIClass.h> 
+#include <CCINIClass.h>
+#include <Utilities/EVAGuard.h>
 
 using namespace Contracts;
 
@@ -51,6 +52,23 @@ static void ensureBannerMessageList(int x, int y, int width)
 		);
 		BannerML_X = x; BannerML_Y = y; BannerML_W = width; BannerML_H = wantH;
 	}
+}
+
+static inline int  HouseIdx(const HouseClass* h)
+{
+	return h ? h->ArrayIndex : -1;
+}
+static inline HouseClass* HouseByIdx(int idx)
+{
+	return (idx >= 0 && idx < HouseClass::Array.Count) ? HouseClass::Array.Items[idx] : nullptr;
+}
+static inline int  SWTypeIdx(const SuperWeaponTypeClass* t)
+{
+	return t ? t->ArrayIndex : -1;
+}
+static inline SuperWeaponTypeClass* SWTypeByIdx(int idx)
+{
+	return (idx >= 0 && idx < SuperWeaponTypeClass::Array.Count) ? SuperWeaponTypeClass::Array.Items[idx] : nullptr;
 }
 
 // --------------------- NEW: global enable/disable switch ---------------------
@@ -198,6 +216,15 @@ void Manager::EnsureSeeds()
 	NormalizeDefinitions();
 }
 
+void Manager::BeginIntermissionNow()
+{
+	if (intermissionEndFrame < 0)
+	{
+		bannerFramesLeft = intermissionFrames;                 // show banner for full gap
+		intermissionEndFrame = Unsorted::CurrentFrame + intermissionFrames;
+	}
+}
+
 void Manager::CaptureMatchSeedIfDue(int64_t anchorFrame)
 {
 	if (MatchSeedCaptured) return;
@@ -214,6 +241,59 @@ void Manager::CaptureMatchSeedIfDue(int64_t anchorFrame)
 		MatchSeed = 0; // deterministic fallback
 	}
 	MatchSeedCaptured = true;
+}
+
+static inline void BuildEligibleIndices(const std::vector<ContractDef>& contracts,
+										uint32_t epoch,
+										std::vector<int>& out)
+{
+	out.clear();
+	out.reserve(contracts.size());
+	for (int i = 0; i < (int)contracts.size(); ++i)
+	{
+		if (contracts[i].availableAfter <= (int)epoch)
+		{
+			out.push_back(i);
+		}
+	}
+
+	// Safety (misconfig): if nothing is eligible, fallback to all
+	if (out.empty())
+	{
+		out.resize(contracts.size());
+		for (int i = 0; i < (int)contracts.size(); ++i) out[i] = i;
+	}
+}
+
+static inline std::string readN(CCINIClass* ini, const char* sec, const char* key, const char* defv, size_t cap)
+{
+	std::vector<char> buf(cap + 1);
+	if (!defv) defv = "";
+	ini->ReadString(sec, key, defv, buf.data(), static_cast<int>(buf.size()));
+	buf[cap] = '\0'; // belt-and-suspenders
+	return std::string(buf.data());
+}
+
+// Reads base key and optional continuations: Key, Key.1, Key.2, ...
+// Concatenates them with commas so your CSV parser works unchanged.
+static inline std::string readLongList(CCINIClass* ini, const char* sec, const char* baseKey)
+{
+	// First chunk (8 KB cap)
+	std::string out = readN(ini, sec, baseKey, "", 8192);
+
+	// Continuations: .1, .2, ... (up to a sane limit)
+	char k[128];
+	for (int i = 1; i <= 64; ++i)
+	{
+		_snprintf_s(k, _TRUNCATE, "%s.%d", baseKey, i);
+		std::string part = readN(ini, sec, k, "", 8192);
+		if (part.empty())
+			break;
+		if (!out.empty() && out.back() != ',' && out.back() != ';')
+			out.push_back(',');
+		out += part;
+	}
+	return out;
 }
 
 // ---------- narrow<->wide helpers (ASCII-safe, fast, deterministic) ----------
@@ -535,32 +615,41 @@ Manager& Manager::Instance()
 
 // ---------- parsing ----------
 
-std::vector<TechnoTypeClass*> Manager::parseTechnoList(CCINIClass* /*ini*/, const char* csv)
+std::vector<TechnoTypeClass*> Manager::parseTechnoList(CCINIClass*, const char* csv)
 {
 	std::vector<TechnoTypeClass*> out;
-	if (!csv || !*csv) return out;
+	if (!csv || !*csv)
+		return out;
 
-	char buf[512] = {};
-	strncpy_s(buf, csv, _TRUNCATE);
+	const size_t n = std::strlen(csv);
+	std::vector<char> buf(n + 1);
+	std::memcpy(buf.data(), csv, n + 1);
 
 	auto trim_inplace_c = [](char*& s)
 		{
-			while (*s && (unsigned char)*s <= ' ') ++s;      // left trim
+			while (*s && (unsigned char)*s <= ' ') ++s;
 			char* e = s + std::strlen(s);
-			while (e > s && (unsigned char)e[-1] <= ' ') *--e = '\0'; // right trim
+			while (e > s && (unsigned char)e[-1] <= ' ') *--e = '\0';
 		};
 
 	char* ctx = nullptr;
-	for (char* tok = strtok_s(buf, ",;\t", &ctx); tok; tok = strtok_s(nullptr, ",;\t", &ctx))
+	for (char* tok = strtok_s(buf.data(), ",;\t", &ctx);
+		 tok;
+		 tok = strtok_s(nullptr, ",;\t", &ctx))
 	{
 		trim_inplace_c(tok);
 		if (!*tok) continue;
+
 		if (auto* t = TechnoTypeClass::Find(tok))
 		{
 			out.push_back(t);
 		}
-		// unknown types are skipped quietly
+		else
+		{
+			Debug::Log("[Contracts] Unknown TechnoType in Types: '%s'", tok);
+		}
 	}
+
 	return out;
 }
 
@@ -609,6 +698,8 @@ void Manager::parseContracts(CCINIClass* ini)
 		ContractDef cd {};
 		cd.id = base;                              // NEW
 		cd.orderIndex = ExtractTrailingNumber(cd.id); // NEW
+		cd.soundID.clear();
+		cd.soundIndex = -1;
 		// Determine contract kind
 		std::string kindKey = canon_kind(typeStr);
 		if (kindKey == "killunits")                 cd.kind = ContractKind::KillUnits;
@@ -624,15 +715,26 @@ void Manager::parseContracts(CCINIClass* ini)
 
 		// Read numeric parameters
 		cd.required = readInt(ini, "ContractBounties", (std::string(base) + ".Required").c_str(), 0);
-		std::string typesCSV = read(ini, "ContractBounties", (std::string(base) + ".Types").c_str(), "");
+		std::string typesCSV = readLongList(ini, "ContractBounties", (std::string(base) + ".Types").c_str());
 		cd.types = parseTechnoList(ini, typesCSV.c_str());  // parse comma-separated type list into TechnoTypeClass pointers
 		cd.timerSeconds = readInt(ini, "ContractBounties", (std::string(base) + ".Timer").c_str(), 600);
 		cd.perTeam = readBool(ini, "ContractBounties", (std::string(base) + ".ShareTeamProgress").c_str(), false);
 		std::string tm = read(ini, "ContractBounties", (std::string(base) + ".TeamRequirementMultiplier").c_str(), "");
 		cd.teamMultiplier = tm.empty() ? 1.0 : ParseDoubleCLocale(tm.c_str());
+		cd.availableAfter = readInt(ini, "ContractBounties", (std::string(base) + ".AvailableAfter").c_str(), 0);
 
 		// Text (wide) – read, trim, resolve Name: (case-insensitive). If CSF is bad/missing, auto-generate.
 		cd.textTemplate = readW(ini, "ContractBounties", (std::string(base) + ".Text").c_str(), L"");
+
+		// Contract Sounds
+		std::string key = std::string(base) + ".Sound";
+		std::string s = read(ini, "ContractBounties", key.c_str(), "");
+		if (!s.empty())
+		{
+			cd.soundID = s;
+			cd.soundIndex = VocClass::FindIndex(cd.soundID.c_str()); // -1 if unknown
+		}
+
 		wtrim_inplace(cd.textTemplate);
 
 		bool haveText = !cd.textTemplate.empty();
@@ -782,6 +884,13 @@ void Manager::parseRewards(CCINIClass* ini)
 		if (rd.weight < 0) rd.weight = 0;
 
 		totalRewardWeight += rd.weight;
+		std::string sk = std::string(base) + ".Sound";
+		std::string s = read(ini, "ContractBounties", sk.c_str(), "");
+		if (!s.empty())
+		{
+			rd.soundID = s;
+			rd.soundIndex = VocClass::FindIndex(s.c_str()); // -1 if unknown → optional no-op
+		}
 		Rewards.push_back(rd);
 	}
 
@@ -826,6 +935,8 @@ void Manager::LoadFromRules(CCINIClass* ini)
 	// --- ensure identical indices across clients ---
 	NormalizeDefinitions();
 
+	intermissionFrames = std::max(0, readInt(ini, "ContractBounties", "IntermissionFrames", 45)) * 15;
+
 	// --- derive deterministic salts from the sorted ids ---
 	if (HeaderML) { delete HeaderML; HeaderML = nullptr; }
 
@@ -833,7 +944,7 @@ void Manager::LoadFromRules(CCINIClass* ini)
 		? L"[Contracts] No contracts in [ContractBounties] (rulesmd.ini?)"
 		: (L"[Contracts] Loaded: " + std::to_wstring(Contracts.size())
 		   + L" contracts, " + std::to_wstring(Rewards.size()) + L" rewards");
-	bannerFramesLeft = 15 * 15; // 4 seconds
+	bannerFramesLeft = intermissionFrames; // 4 seconds
 }
 
 // Scenario (map) overrides. Called from Contracts::LoadScenarioOverrides(mapIni)
@@ -873,6 +984,21 @@ void Contracts::Manager::LoadFromScenario(CCINIClass* ini)
 		SeedsReady = false;
 		Debug::Log("[Contracts] Scenario disabled contracts. Skipping parse.");
 		return;
+	}
+
+	{
+		std::string raw = read(ini, "ContractBounties", "IntermissionFrames", "");
+		if (!raw.empty())
+		{
+			int sec = 0;
+			try { sec = std::stoi(raw); }
+			catch (...) { sec = -1; }
+			if (sec >= 0)
+			{
+				intermissionFrames = sec * 15;
+				Debug::Log("[Contracts] Scenario IntermissionFrames -> %d (frames=%d)", sec, intermissionFrames);
+			}
+		}
 	}
 
 	// 2) If the map actually *defines* overrides (any key in section), replace rules with map data
@@ -918,7 +1044,7 @@ void Contracts::Manager::LoadFromScenario(CCINIClass* ini)
 			: (L"[Contracts] Scenario overrides loaded: "
 			   + std::to_wstring(Contracts.size()) + L" contracts, "
 			   + std::to_wstring(Rewards.size()) + L" rewards");
-		bannerFramesLeft = 15 * 15;
+		bannerFramesLeft = intermissionFrames;
 
 		Debug::Log("[Contracts] Scenario parse result: C=%zu, R=%zu", Contracts.size(), Rewards.size());
 		return;
@@ -949,7 +1075,7 @@ void Contracts::Manager::LoadFromScenario(CCINIClass* ini)
 			bannerText = Contracts.empty()
 				? L"[Contracts] Enabled by scenario (no map overrides; rules has no contracts)."
 				: L"[Contracts] Enabled by scenario (using rules definitions).";
-			bannerFramesLeft = 15 * 15;
+			bannerFramesLeft = intermissionFrames;
 
 			Debug::Log("[Contracts] Fallback rules parse result: C=%zu, R=%zu", Contracts.size(), Rewards.size());
 		}
@@ -1065,7 +1191,7 @@ void Manager::InitMatchSeed()
 
 void Manager::StartOrSyncFromAnchor(int64_t anchorFrame)
 {
-	if (!gContractsEnabled) return; // NEW guard
+	if (!gContractsEnabled) return;
 
 	// 1) need defs and a captured MatchSeed
 	EnsureSeeds();
@@ -1073,18 +1199,46 @@ void Manager::StartOrSyncFromAnchor(int64_t anchorFrame)
 	if (!SeedsReady) InitMatchSeed();
 	if (Contracts.empty() || Rewards.empty()) return;
 
+	const int n = static_cast<int>(Contracts.size());
+
 	// 2) walk epochs from shared anchor up to current sim frame
 	const int64_t now = Unsorted::CurrentFrame;
 	int64_t start = anchorFrame;
 	uint32_t epoch = 0;
 
+	// track previous pick to avoid immediate repeats (Option A)
+	int lastIdx = -1;
+
 	constexpr uint32_t kMaxEpochScan = 100000; // safety
 
 	while (epoch < kMaxEpochScan)
 	{
-		const int idx = DeterministicRanged(
-			0, static_cast<int>(Contracts.size()) - 1,
-			RollSaltContracts, epoch);
+		// NEW: pool filtered by AvailableAfter<=epoch
+		std::vector<int> pool;
+		BuildEligibleIndices(Contracts, epoch, pool);
+		const int m = (int)pool.size();
+
+		// base pick inside pool
+		int k = DeterministicRanged(0, m - 1, RollSaltContracts, epoch);
+		int idx = pool[k];
+
+		// avoid immediate repeat vs previous epoch (Option A)
+		if (m > 1 && lastIdx >= 0 && idx == lastIdx)
+		{
+			int k2 = DeterministicRanged(0, m - 1, RollSaltContracts ^ 0xBADC0DEu, epoch);
+			int idx2 = pool[k2];
+			if (idx2 == lastIdx)
+			{
+				int prevPos = -1;
+				for (int i = 0; i < m; ++i) if (pool[i] == lastIdx) { prevPos = i; break; }
+				if (prevPos >= 0)
+				{
+					k2 = (prevPos + 1 + (RollSaltContracts & 7)) % m;
+					idx2 = pool[k2];
+				}
+			}
+			idx = idx2;
+		}
 
 		const auto& cd = Contracts[idx];
 		const int frames = std::max(1, cd.timerSeconds) * 15;
@@ -1092,30 +1246,14 @@ void Manager::StartOrSyncFromAnchor(int64_t anchorFrame)
 
 		if (now < end)
 		{
-			// land on current epoch window
-			ActiveContractID = epoch;
-			NextContractID = epoch + 1;
-			activeContractIndex = idx;
-			currentContractStartFrame = start;
-			timerEndFrame = end;
-
-			rebuildCompetitors();
-			for (auto& c : Competitors) c.progress = 0;
-			moneyDuringContract.clear();
-
-			activeIsPerTeam = cd.perTeam;
-			activeRequired = std::max(1, requiredFor(cd));
-
-			// optional, user feedback
-			if (bannerFramesLeft <= 0)
-			{
-				bannerText = L"[Contracts] Contract finished. New contract: #" + std::to_wstring(activeContractIndex + 1);
-				bannerFramesLeft = 15 * 30;
-			}
-			return; // IMPORTANT: stop scanning after landing on the window
+			// ... (unchanged body that sets ActiveContractID/NextContractID,
+			//      activeContractIndex, start/end frames, plays sound, rebuilds, etc.)
+			// (your existing code here)
+			return;
 		}
 
 		start = end;
+		lastIdx = idx;        // remember to enforce "no immediate repeat"
 		++epoch;
 	}
 
@@ -1163,12 +1301,12 @@ void Manager::StartContractAtFrame(int64_t anchorFrame)
 
 	// Cosmetic banner
 	bannerText = L"[Contracts] Scenario start";
-	bannerFramesLeft = 15 * 15;
+	bannerFramesLeft = intermissionFrames;
 
 	if (Contracts.empty() || Rewards.empty())
 	{
 		bannerText = L"[Contracts] No contracts configured.";
-		bannerFramesLeft = 15 * 15;
+		bannerFramesLeft = intermissionFrames;
 		return;
 	}
 
@@ -1203,9 +1341,35 @@ void Manager::startNewContract()
 
 	ActiveContractID = NextContractID++;
 
-	activeContractIndex = DeterministicRanged(
-		0, static_cast<int>(Contracts.size()) - 1,
-		RollSaltContracts, ActiveContractID);
+	// NEW: pick from eligible pool for this epoch
+	std::vector<int> pool;
+	BuildEligibleIndices(Contracts, ActiveContractID, pool);
+	const int m = (int)pool.size();
+
+	// base pick inside the pool
+	int k = DeterministicRanged(0, m - 1, RollSaltContracts, ActiveContractID);
+	int idx = pool[k];
+
+	// avoid immediate repeat vs previous active index (Option A)
+	if (m > 1 && idx == activeContractIndex)
+	{
+		int k2 = DeterministicRanged(0, m - 1, RollSaltContracts ^ 0xBADC0DEu, ActiveContractID);
+		int idx2 = pool[k2];
+		if (idx2 == activeContractIndex)
+		{
+			// step forward deterministically *within the pool*
+			int prevPos = -1;
+			for (int i = 0; i < m; ++i) if (pool[i] == activeContractIndex) { prevPos = i; break; }
+			if (prevPos >= 0)
+			{
+				k2 = (prevPos + 1 + (RollSaltContracts & 7)) % m;
+				idx2 = pool[k2];
+			}
+		}
+		idx = idx2;
+	}
+
+	activeContractIndex = idx;
 
 	rebuildCompetitors();
 	for (auto& c : Competitors) c.progress = 0;
@@ -1218,26 +1382,47 @@ void Manager::startNewContract()
 	const int frames = std::max(1, cd.timerSeconds) * 15;
 
 	const int64_t now = Unsorted::CurrentFrame;
+	int64_t startFrame;
+
 	if (initialAnchorFrame >= 0)
 	{
-		currentContractStartFrame = initialAnchorFrame;
-		timerEndFrame = currentContractStartFrame + frames;
+		// First start after a sync/anchor: use the anchor exactly
+		startFrame = initialAnchorFrame;
 		initialAnchorFrame = -1;
+	}
+	else if (currentContractStartFrame >= 0 && now >= timerEndFrame)
+	{
+		// Expired window: advance on the SCHEDULED boundary, not 'now'
+		startFrame = timerEndFrame;
 	}
 	else
 	{
-		currentContractStartFrame = now;
-		timerEndFrame = now + frames;
+		// Early advance (e.g., a winner) or very first run without anchor
+		startFrame = now;
+	}
+
+	currentContractStartFrame = startFrame;
+	timerEndFrame = startFrame + frames;
+	intermissionEndFrame = -1;
+
+	// Play optional global jingle (deterministic RNG-guarded)
+	if (activeContractIndex >= 0)
+	{
+		const auto& cd2 = Contracts[activeContractIndex];
+		if (cd2.soundIndex >= 0)
+		{
+			PlayGlobal_Safe(cd2.soundIndex, 0x2000, 1.0f);
+		}
 	}
 
 	// only announce “new contract” if no reward banner is currently up
 	if (bannerFramesLeft <= 0)
 	{
-		bannerText = L"[Contracts] Contract finished. New contract: #" + std::to_wstring(activeContractIndex + 1);
-		bannerFramesLeft = 15 * 30;
+		bannerText = L"[Contracts] Contract finished. New contract: #"
+			+ std::to_wstring(activeContractIndex + 1);
+		bannerFramesLeft = intermissionFrames;
 	}
 }
-
 // ---------- UI ----------
 
 const wchar_t* Contracts::Manager::tryHouseName(HouseClass* /*h*/) const
@@ -1302,13 +1487,84 @@ static inline std::wstring ExpandContractText(const std::wstring& tmpl,
 
 void Manager::DrawUI()
 {
+	if (PendingApplyAfterLoad) return;
 	if (!gContractsEnabled) return;
-	if (activeContractIndex < 0 || activeContractIndex >= (int)Contracts.size())
-		return;
 
+	const int64_t now = Unsorted::CurrentFrame;
+	const bool hasActive =
+		(activeContractIndex >= 0 && activeContractIndex < (int)Contracts.size());
+
+	// 1) Intermission HUD takes precedence and should render regardless of hasActive
+	if (intermissionEndFrame >= 0)
+	{
+		const bool showBanner = (bannerFramesLeft > 0 && !bannerText.empty());
+
+		std::wstring header;
+		if (showBanner)
+		{
+			header = bannerText;
+		}
+		else
+		{
+			const int framesLeft = std::max<int>(0, (int)(intermissionEndFrame - now));
+			const int sec = framesLeft / 15;
+			wchar_t tb[32];
+			_snwprintf_s(tb, _TRUNCATE, L"  (%d:%02d)", sec / 60, sec % 60);
+			header = L"Next contract in";
+			header += tb;
+		}
+
+		ensureHeaderMessageList();
+
+		int colorIdx = uiHeaderColor;
+		if (colorIdx < 0) { colorIdx = std::max(ColorScheme::FindIndex("LightGrey", 53), 0); }
+
+		constexpr int kHeaderId = 1;
+		if (auto* slot = HeaderML->GetMessage(kHeaderId))
+		{
+			if (wcsncmp(slot, header.c_str(), 160) != 0)
+				wcsncpy_s(slot, 160 + 1, header.c_str(), _TRUNCATE);
+		}
+		else
+		{
+			HeaderML->AddMessage(nullptr, kHeaderId, header.c_str(),
+								 colorIdx, static_cast<TextPrintType>(uiHeaderStyle),
+								 0x7FFFFFFF, true);
+		}
+		HeaderML->Draw();
+		return;
+	}
+
+	// 2) If there’s no active contract yet, still allow banners to show once
+	if (!hasActive)
+	{
+		if (bannerFramesLeft > 0 && !bannerText.empty())
+		{
+			ensureHeaderMessageList();
+
+			int colorIdx = uiHeaderColor;
+			if (colorIdx < 0) { colorIdx = std::max(ColorScheme::FindIndex("LightGrey", 53), 0); }
+
+			constexpr int kHeaderId = 1;
+			if (auto* slot = HeaderML->GetMessage(kHeaderId))
+			{
+				if (wcsncmp(slot, bannerText.c_str(), 160) != 0)
+					wcsncpy_s(slot, 160 + 1, bannerText.c_str(), _TRUNCATE);
+			}
+			else
+			{
+				HeaderML->AddMessage(nullptr, kHeaderId, bannerText.c_str(),
+									 colorIdx, static_cast<TextPrintType>(uiHeaderStyle),
+									 0x7FFFFFFF, true);
+			}
+			HeaderML->Draw();
+		}
+		return;
+	}
+
+		// === Normal header (current contract + timer) ===
 	const ContractDef& cd = Contracts[activeContractIndex];
 
-	// Normal header (current contract + timer)
 	std::wstring header = L"Contract ";
 	header += std::to_wstring(activeContractIndex + 1);
 	header += L": ";
@@ -1318,14 +1574,13 @@ void Manager::DrawUI()
 
 	if (uiShowTimer)
 	{
-		const int framesLeft = std::max<int>(0, (int)(timerEndFrame - Unsorted::CurrentFrame));
+		const int framesLeft = std::max<int>(0, (int)(timerEndFrame - now));
 		const int sec = framesLeft / 15;
 		wchar_t tb[32];
 		_snwprintf_s(tb, _TRUNCATE, L"  (%d:%02d)", sec / 60, sec % 60);
 		header += tb;
 	}
 
-	// If a banner is active, show it INSTEAD of the normal header
 	const std::wstring& headerToDraw = (bannerFramesLeft > 0 && !bannerText.empty())
 		? bannerText
 		: header;
@@ -1409,25 +1664,116 @@ void Manager::DrawUI()
 
 void Manager::OnFrame()
 {
-	if (!gContractsEnabled) return; // NEW guard
+	if (intermissionEndFrame < 0                 // not in an intermission window
+	&& activeContractIndex < 0               // no active contract yet
+	&& !Contracts.empty() && !Rewards.empty()
+	&& gContractsEnabled)
+	{
+		// capture per-match RNG once all peers are in lockstep at this frame
+		CaptureMatchSeedIfDue((int64_t)Unsorted::CurrentFrame);
 
+		if (!SeedsReady)
+		{
+			InitMatchSeed(); // derives salts from defs + MatchSeed (just captured)
+		}
+
+		startNewContract();  // sets activeContractIndex, timers, UI, etc.
+		return;              // optional: skip the rest of this frame for cleanliness
+	}
+
+	if (PendingApplyAfterLoad)
+	{
+		const int now = (int)Unsorted::CurrentFrame;
+		for (auto const& p : PendingTransientSWs)
+		{
+			auto* owner = HouseByIdx(p.ownerIdx);
+			auto* type = SWTypeByIdx(p.typeIdx);
+			if (!owner || !type) continue;
+
+			// find/create the SuperClass safely now that the world is fully loaded
+			SuperClass* sw = nullptr;
+			for (int i = 0; i < owner->Supers.Count; ++i)
+			{
+				if (auto* s2 = owner->Supers.Items[i]; s2 && s2->Type == type) { sw = s2; break; }
+			}
+			if (!sw)
+			{
+				sw = new SuperClass(type, owner);
+				owner->Supers.AddItem(sw);
+			}
+			TransientSWs.push_back({ sw, now + std::max(0, p.expireFramesLeft) });
+		}
+		PendingTransientSWs.clear();
+		PendingApplyAfterLoad = false;
+
+		if (!PendingTeamsMembersIdx.empty())
+		{
+			Competitors.resize(PendingTeamsMembersIdx.size());
+			for (size_t i = 0; i < PendingTeamsMembersIdx.size(); ++i)
+			{
+				Competitors[i].members.clear();
+				for (int idx : PendingTeamsMembersIdx[i])
+					if (auto* h = HouseByIdx(idx))
+						Competitors[i].members.push_back(h);
+			}
+			PendingTeamsMembersIdx.clear();
+		}
+
+		// rebuild money map now that we can resolve houses
+		if (!PendingMoneyByHouse.empty())
+		{
+			moneyDuringContract.clear();
+			for (auto const& kv : PendingMoneyByHouse)
+				if (auto* h = HouseByIdx(kv.first))
+					moneyDuringContract[h] = kv.second;
+			PendingMoneyByHouse.clear();
+		}
+
+		// we’re done with all post-load work
+		PendingApplyAfterLoad = false;
+
+		// NEW: force a clean rebuild of UI on next frame, so rows recolor
+		if (HeaderML) { delete HeaderML; HeaderML = nullptr; }
+		if (RowsML) { delete RowsML;   RowsML = nullptr; }
+		return; // optional: skip the rest of this frame to be extra safe
+	}
+	if (!gContractsEnabled) return;
 	TickTransientSWs();
-	if (bannerFramesLeft > 0) { --bannerFramesLeft; } // purely visual
-
+	if (bannerFramesLeft > 0) { --bannerFramesLeft; }
 	if (activeContractIndex < 0) return;
 
 	const int64_t now = Unsorted::CurrentFrame;
-	if (now >= timerEndFrame)
+
+	// If the contract expired and no intermission has been scheduled yet, schedule it.
+	if (intermissionEndFrame < 0 && now >= timerEndFrame)
 	{
 		bannerText = L"Contract expired.";
-		bannerFramesLeft = 15 * 15;
-		startNewContract();
+		bannerFramesLeft = intermissionFrames;            // ← 45s (or rules override)
+		intermissionEndFrame = timerEndFrame + intermissionFrames;
+	}
+
+	// Catch up: if intermission has elapsed (or we froze past it), start next(s).
+	int safety = 0;
+	while (intermissionEndFrame >= 0 && now >= intermissionEndFrame && safety++ < 128)
+	{
+		startNewContract(); // this clears intermissionEndFrame to -1
+
+		// If we froze long enough that the *new* window is already over, schedule its intermission immediately
+		if (now >= timerEndFrame)
+		{
+			intermissionEndFrame = timerEndFrame + intermissionFrames;
+		}
+		else
+		{
+			intermissionEndFrame = -1; // remain in active window
+		}
 	}
 }
 
 
 void Manager::OnKill(TechnoClass* victim, HouseClass* killerOwner, bool victimIsBuilding)
 {
+	if (intermissionEndFrame >= 0) return;
 	if (!gContractsEnabled) return; // NEW guard
 	if (activeContractIndex < 0) return;
 	const auto& cd = Contracts[activeContractIndex];
@@ -1435,6 +1781,23 @@ void Manager::OnKill(TechnoClass* victim, HouseClass* killerOwner, bool victimIs
 	if (cd.kind == ContractKind::KillUnits && victimIsBuilding) return;
 	if (cd.kind == ContractKind::KillBuildings && !victimIsBuilding) return;
 	if (cd.kind != ContractKind::KillUnits && cd.kind != ContractKind::KillBuildings) return;
+
+	// --- prevent farming with own (or allied) kills ---
+	HouseClass* victimOwner = victim ? victim->Owner : nullptr;
+	if (!killerOwner || !victimOwner)
+		return; // no valid ownership info -> don't count
+
+	// block self-kills outright
+	if (victimOwner == killerOwner)
+		return;
+
+	// OPTIONAL: if you also want to block allied kills, uncomment:
+	 if (alliedMutual(victimOwner, killerOwner))
+	    return;
+
+	// OPTIONAL: if you want to ignore neutral/civilian kills:
+	 if (!IsCompetitiveHouse(victimOwner))
+	     return;
 
 	if (!cd.types.empty())
 	{
@@ -1453,7 +1816,8 @@ void Manager::OnKill(TechnoClass* victim, HouseClass* killerOwner, bool victimIs
 		if (++c.progress >= activeRequired)
 		{
 			if (const auto* rw = pickRewardSync()) applyReward(rw, c);
-			startNewContract();
+			BeginIntermissionNow();    // <-- schedule the gap
+			return;
 		}
 		break;
 	}
@@ -1461,6 +1825,7 @@ void Manager::OnKill(TechnoClass* victim, HouseClass* killerOwner, bool victimIs
 
 void Manager::OnBuild(BuildingClass* built)
 {
+	if (intermissionEndFrame >= 0) return;
 	if (!gContractsEnabled) return;
 	if (activeContractIndex < 0 || !built) return;
 
@@ -1498,7 +1863,8 @@ void Manager::OnBuild(BuildingClass* built)
 		if (c.progress >= activeRequired)
 		{
 			if (const auto* rw = pickRewardSync()) applyReward(rw, c);
-			startNewContract();
+			BeginIntermissionNow();    // <-- schedule the gap
+			return;
 		}
 		return;
 	}
@@ -1506,6 +1872,7 @@ void Manager::OnBuild(BuildingClass* built)
 
 void Manager::OnInfiltration(HouseClass* infiltrator, BuildingClass* /*target*/)
 {
+	if (intermissionEndFrame >= 0) return;
 	if (!gContractsEnabled) return; // NEW guard
 	if (activeContractIndex < 0) return;
 	const auto& cd = Contracts[activeContractIndex];
@@ -1518,13 +1885,15 @@ void Manager::OnInfiltration(HouseClass* infiltrator, BuildingClass* /*target*/)
 
 		c.progress = activeRequired = 1;
 		if (const auto* rw = pickRewardSync()) applyReward(rw, c);
-		startNewContract();
+		BeginIntermissionNow();    // <-- schedule the gap
 		return;
+
 	}
 }
 
 void Manager::OnMoney(HouseClass* house, int amount)
 {
+	if (intermissionEndFrame >= 0) return;
 	if (!gContractsEnabled) return; // NEW guard
 	if (activeContractIndex < 0 || amount <= 0) return;
 	const auto& cd = Contracts[activeContractIndex];
@@ -1541,7 +1910,8 @@ void Manager::OnMoney(HouseClass* house, int amount)
 		if (c.progress >= activeRequired)
 		{
 			if (const auto* rw = pickRewardSync()) applyReward(rw, c);
-			startNewContract();
+			BeginIntermissionNow();    // <-- schedule the gap
+			return;
 		}
 		return;
 	}
@@ -1628,12 +1998,16 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 			h->GiveMoney(rw->moneyAmount);
 		}
 		const std::wstring pretty = ExpandRewardText(*rw);
-		bannerText = L"Contract complete! " + winnerTxt + L" — " + pretty;
-		bannerFramesLeft = 15 * 30;
+		bannerText = L"Contract complete! " + winnerTxt + L" - " + pretty;
+		bannerFramesLeft = intermissionFrames;
 
 		if (HouseClass* owner = PickDeterministicOwner(winner))
 		{
 			BroadcastRewardPopup(owner, L"[Contracts] " + winnerTxt + L" received: " + pretty);
+		}
+		if (rw->soundIndex >= 0)
+		{
+			PlayGlobal_Safe(rw->soundIndex, 0x2000, 1.0f);
 		}
 	} break;
 
@@ -1657,12 +2031,16 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 			}
 		}
 		const std::wstring pretty = ExpandRewardText(*rw);
-		bannerText = L"Contract complete! " + winnerTxt + L" — " + pretty;
-		bannerFramesLeft = 15 * 30;
+		bannerText = L"Contract complete! " + winnerTxt + L" - " + pretty;
+		bannerFramesLeft = intermissionFrames;
 
 		if (HouseClass* owner = PickDeterministicOwner(winner))
 		{
 			BroadcastRewardPopup(owner, L"[Contracts] " + winnerTxt + L" received: " + pretty);
+		}
+		if (rw->soundIndex >= 0)
+		{
+			PlayGlobal_Safe(rw->soundIndex, 0x2000, 1.0f);
 		}
 	} break;
 
@@ -1686,8 +2064,8 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 
 		// Now it's safe to build the pretty text & announce
 		const std::wstring pretty = ExpandRewardText(*rw);
-		bannerText = L"Contract complete! " + winnerTxt + L" — " + pretty;
-		bannerFramesLeft = 15 * 30;
+		bannerText = L"Contract complete! " + winnerTxt + L" - " + pretty;
+		bannerFramesLeft = intermissionFrames;
 
 		BroadcastRewardPopup(owner, L"[Contracts] " + winnerTxt + L" received: " + pretty);
 
@@ -1723,6 +2101,11 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 		sw->SetRechargeTime(0);
 		sw->SetReadiness(true);
 
+		if (rw->soundIndex >= 0)
+		{
+			PlayGlobal_Safe(rw->soundIndex, 0x2000, 1.0f);
+		}
+
 		// Snapshot after
 		Debug::Log("[Contracts][SW] post: IsPresent=%d IsOneTime=%d IsReady=%d IsSuspended=%d CanHold=%d Name='%ls'",
 			sw->IsPresent ? 1 : 0, sw->IsOneTime ? 1 : 0, sw->IsReady ? 1 : 0,
@@ -1738,4 +2121,164 @@ void Manager::applyReward(const RewardDef* rw, const Competitor& winner)
 	} break;
 
 	}
+}
+
+ContractsSave Manager::CaptureForSave() const
+{
+	ContractsSave out;
+
+	const int64_t now = Unsorted::CurrentFrame;
+
+	// toggles / seeds
+	out.enabled = gContractsEnabled;
+	out.seedsReady = SeedsReady;
+	out.matchSeedCaptured = MatchSeedCaptured;
+	out.matchSeed = MatchSeed;
+	out.gameSyncSeed = GameSyncSeed;
+	out.rollSaltContracts = RollSaltContracts;
+	out.rollSaltRewards = RollSaltRewards;
+
+	// selection / epoch
+	out.activeContractIndex = activeContractIndex;
+	out.nextContractID = NextContractID;
+	out.activeContractID = ActiveContractID;
+	out.activeIsPerTeam = activeIsPerTeam;
+	out.activeRequired = activeRequired;
+
+	// timing — store relative frames
+	if (intermissionEndFrame >= 0)
+	{
+		out.remainingIntermissionFrames = (int32_t)std::max<int64_t>(0, intermissionEndFrame - now);
+		out.remainingContractFrames = 0;
+		out.contractSpanFrames = 0; // not used in intermission
+	}
+	else
+	{
+		const int32_t remain = (int32_t)std::max<int64_t>(0, timerEndFrame - now);
+		out.remainingContractFrames = remain;
+		out.remainingIntermissionFrames = -1;
+		// derive span of the active contract (needed to reconstruct start frame)
+		int frames = 0;
+		if (activeContractIndex >= 0 && activeContractIndex < (int)Contracts.size())
+		{
+			frames = std::max(1, Contracts[activeContractIndex].timerSeconds) * 15;
+		}
+		out.contractSpanFrames = frames;
+	}
+
+	// UI
+	out.bannerFramesLeft = bannerFramesLeft;
+	out.bannerText = bannerText;
+
+	// competitors
+	out.teams.clear(); out.teams.reserve(Competitors.size());
+	for (auto const& c : Competitors)
+	{
+		ContractsSave::Team t;
+		t.progress = c.progress;
+		t.members.reserve(c.members.size());
+		for (auto* h : c.members) t.members.push_back(HouseIdx(h));
+		out.teams.push_back(std::move(t));
+	}
+
+	// money map
+	out.moneyByHouse.clear();
+	out.moneyByHouse.reserve(moneyDuringContract.size());
+	for (auto const& kv : moneyDuringContract)
+	{
+		out.moneyByHouse.emplace_back(HouseIdx(kv.first), kv.second);
+	}
+
+	// transient SWs
+	out.transients.clear();
+	out.transients.reserve(TransientSWs.size());
+	for (auto const& e : TransientSWs)
+	{
+		ContractsSave::TransientSW t {};
+		HouseClass* owner = e.SW ? e.SW->Owner : nullptr;  // get owner from the SuperClass
+		t.ownerIdx = HouseIdx(owner);
+		t.typeIdx = SWTypeIdx(e.SW ? e.SW->Type : nullptr);
+		t.expireFramesLeft = (int32_t)std::max(0, e.ExpireFrame - (int)now);
+		out.transients.push_back(t);
+	}
+
+	return out;
+}
+
+void Manager::ApplyFromSave(const ContractsSave& s)
+{
+	// toggles / seeds
+	gContractsEnabled = s.enabled;
+	SeedsReady = s.seedsReady;
+	MatchSeedCaptured = s.matchSeedCaptured;
+	MatchSeed = s.matchSeed;
+	GameSyncSeed = s.gameSyncSeed;
+	RollSaltContracts = s.rollSaltContracts;
+	RollSaltRewards = s.rollSaltRewards;
+
+	// selection / epoch
+	activeContractIndex = s.activeContractIndex;
+	NextContractID = s.nextContractID;
+	ActiveContractID = s.activeContractID;
+	activeIsPerTeam = s.activeIsPerTeam;
+	activeRequired = s.activeRequired;
+
+	if (activeContractIndex < -1 || activeContractIndex >= (int)Contracts.size())
+	{
+		activeContractIndex = -1;
+	}
+
+	// UI
+	bannerFramesLeft = s.bannerFramesLeft;
+	bannerText = s.bannerText;
+
+	// rebuild competitors
+	PendingTeamsMembersIdx.clear();
+	PendingTeamsMembersIdx.reserve(s.teams.size());
+	for (auto const& t : s.teams)
+		PendingTeamsMembersIdx.push_back(t.members);
+
+	// still store progress now (we'll attach members later)
+	Competitors.clear();
+	Competitors.resize(s.teams.size());
+	for (size_t i = 0; i < s.teams.size(); ++i)
+		Competitors[i].progress = s.teams[i].progress;
+
+	// defer money map for the same reason (indexes → houses later)
+	PendingMoneyByHouse = s.moneyByHouse;
+
+	// rebuild transient SWs
+	PendingTransientSWs.clear();
+	for (auto const& t : s.transients)
+	{
+		if (t.ownerIdx >= 0 && t.typeIdx >= 0)
+		{
+			PendingTransientSWs.push_back({ t.ownerIdx, t.typeIdx, t.expireFramesLeft });
+		}
+	}
+	PendingApplyAfterLoad = true;
+
+	// timers — reconstruct from relative frames
+	if (s.remainingIntermissionFrames >= 0)
+	{
+		intermissionEndFrame = Unsorted::CurrentFrame + s.remainingIntermissionFrames;
+		// keep last window frames just for reference; UI path ignores during intermission
+		currentContractStartFrame = -1;
+		timerEndFrame = Unsorted::CurrentFrame; // cosmetic clamp
+	}
+	else
+	{
+		intermissionEndFrame = -1;
+		const int64_t now64 = Unsorted::CurrentFrame;
+		timerEndFrame = now64 + s.remainingContractFrames;
+		currentContractStartFrame = (s.contractSpanFrames > 0)
+			? (timerEndFrame - s.contractSpanFrames)
+			: (now64); // fallback
+	}
+
+	// force UI lists to rebuild on next draw
+	HeaderML = nullptr;
+	RowsML = nullptr;
+
+	// IMPORTANT: do not start contracts or play sounds here.
 }

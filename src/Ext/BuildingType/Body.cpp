@@ -176,6 +176,8 @@ void BuildingTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->Units_RepairPercent.Read(exINI, pSection, "Units.RepairPercent");
 	this->Units_UseRepairCost.Read(exINI, pSection, "Units.UseRepairCost");
 
+	this->Factory_EnableRallyPoint.Read(exINI, pSection, "Factory.EnableRallyPoint");
+
 	this->NoBuildAreaOnBuildup.Read(exINI, pSection, "NoBuildAreaOnBuildup");
 	this->Adjacent_Allowed.Read(exINI, pSection, "Adjacent.Allowed");
 	this->Adjacent_Disallowed.Read(exINI, pSection, "Adjacent.Disallowed");
@@ -357,6 +359,7 @@ void BuildingTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->AICaptureSell_Chance)
 		.Process(this->AICaptureSell_RespectUnsellable)
 		.Process(this->AICaptureSell_HealthBelowPercent)
+		.Process(this->Factory_EnableRallyPoint)
 		;
 }
 

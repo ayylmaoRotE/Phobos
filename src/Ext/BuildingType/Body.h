@@ -76,6 +76,8 @@ public:
 		Nullable<double> Units_RepairPercent;
 		Nullable<bool> Units_UseRepairCost;
 
+		Valueable<bool> Factory_EnableRallyPoint;
+
 		Valueable<bool> NoBuildAreaOnBuildup;
 		ValueableVector<BuildingTypeClass*> Adjacent_Allowed;
 		ValueableVector<BuildingTypeClass*> Adjacent_Disallowed;
@@ -146,6 +148,7 @@ public:
 			, ZShapePointMove_OnBuildup { false }
 			, SellBuildupLength { 23 }
 			, AircraftDockingDirs {}
+			, Factory_EnableRallyPoint { true }
 			, FactoryPlant_AllowTypes {}
 			, FactoryPlant_DisallowTypes {}
 			, IsAnimDelayedBurst { true }

@@ -977,3 +977,27 @@ DEFINE_HOOK(0x446A75, BuildingClass_GrandOpening_OnBuilt, 0x5)
 	// continue right after the 7-byte store we replaced
 	return 0x446A7E; // mov eax, [ebp+21Ch]
 }
+
+bool FakeBuildingClass::_IsFactory()
+{
+	// Extended IsFactory logic: include AircraftType + original check, but allow disabling via tag
+	if (this->Type->Factory == AbstractType::AircraftType)
+	{
+		auto const pTypeExt = BuildingTypeExt::ExtMap.Find(this->Type);
+		if (pTypeExt && pTypeExt->Factory_EnableRallyPoint.Get())
+			return true;
+		else
+			return false; // AircraftType factory but rally points disabled
+	}
+
+	// Handle cloning vats explicitly (they have Factory=None but should support rally points)
+	if (this->Type->Cloning)
+	{
+		auto const pTypeExt = BuildingTypeExt::ExtMap.Find(this->Type);
+		return pTypeExt && pTypeExt->Factory_EnableRallyPoint.Get();
+	}
+
+	// For other non-aircraft factories, use original vanilla logic
+	return this->Type->Factory != AbstractType::None;
+}
+DEFINE_FUNCTION_JUMP(VTABLE, 0x7E4140, FakeBuildingClass::_IsFactory);
