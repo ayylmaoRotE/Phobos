@@ -1,4 +1,3 @@
-#include <CCINIClass.h>
 #include "Commands.h"
 
 #include "ObjectInfo.h"
@@ -13,7 +12,13 @@
 #include "ToggleSWSidebar.h"
 #include "FireTacticalSW.h"
 #include "ShowTechnoNames.h"
+#include "ToggleMessageList.h"
+
+#include <CCINIClass.h>
+
+#include <Utilities/Macro.h>
 #include <Ext/Sidebar/SWSidebar/SWSidebarClass.h>
+#include <Misc/MessageColumn.h>
 
 DEFINE_HOOK(0x533066, CommandClassCallback_Register, 0x6)
 {
@@ -23,6 +28,7 @@ DEFINE_HOOK(0x533066, CommandClassCallback_Register, 0x6)
 	MakeCommand<QuickSaveCommandClass>();
 	MakeCommand<ToggleDigitalDisplayCommandClass>();
 	MakeCommand<ToggleDesignatorRangeCommandClass>();
+	MakeCommand<ToggleMessageListCommandClass>();
 	MakeCommand<ToggleSWSidebar>();
 
 	if (Phobos::Config::SuperWeaponSidebarCommands)
@@ -55,4 +61,39 @@ DEFINE_HOOK(0x533066, CommandClassCallback_Register, 0x6)
 	}
 
 	return 0;
+}
+
+static void MouseWheelDownCommand()
+{
+	if (MessageColumnClass::Instance.IsHovering())
+		MessageColumnClass::Instance.ScrollDown();
+}
+
+static void MouseWheelUpCommand()
+{
+	if (MessageColumnClass::Instance.IsHovering())
+		MessageColumnClass::Instance.ScrollUp();
+}
+
+DEFINE_HOOK(0x777998, Game_WndProc_ScrollMouseWheel, 0x6)
+{
+	GET(const WPARAM, WParam, ECX);
+
+	if (WParam & 0x80000000u)
+		MouseWheelDownCommand();
+	else
+		MouseWheelUpCommand();
+
+	return 0;
+}
+
+static inline bool CheckSkipScrollSidebar()
+{
+	return MessageColumnClass::Instance.IsHovering();
+}
+
+DEFINE_HOOK(0x533F50, Game_ScrollSidebar_Skip, 0x5)
+{
+	enum { SkipScrollSidebar = 0x533FC3 };
+	return CheckSkipScrollSidebar() ? SkipScrollSidebar : 0;
 }

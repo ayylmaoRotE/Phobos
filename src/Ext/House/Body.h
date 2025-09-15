@@ -58,6 +58,7 @@ public:
 		int NumShipyards_NonMFB;
 
 		std::map<int, std::vector<int>> SuspendedEMPulseSWs;
+
 		// standalone? no need and not a good idea
 		struct SWExt
 		{
