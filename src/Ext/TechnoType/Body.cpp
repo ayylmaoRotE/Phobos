@@ -957,6 +957,7 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* const pINI)
 	this->Promote_EliteAnimation.Read(exINI, pSection, "Promote.EliteAnimation");
 
 	this->RadarInvisibleToHouse.Read(exINI, pSection, "RadarInvisibleToHouse");
+	this->Paradrop_DropPassengers.Read(exINI, pSection, "Paradrop.DropPassengers");
 
 	this->Overload_Count.Read(exINI, pSection, "Overload.Count");
 	this->Overload_Damage.Read(exINI, pSection, "Overload.Damage");
@@ -1737,6 +1738,7 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm)
 		.Process(this->Promote_EliteAnimation)
 
 		.Process(this->RadarInvisibleToHouse)
+		.Process(this->Paradrop_DropPassengers)
 
 		.Process(this->Overload_Count)
 		.Process(this->Overload_Damage)

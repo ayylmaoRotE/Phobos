@@ -373,6 +373,8 @@ public:
 		Valueable<CoordStruct> Spawner_RecycleCoord;
 		Valueable<bool> Spawner_RecycleOnTurret;
 
+		Valueable<bool> Paradrop_DropPassengers;
+
 		Nullable<bool> Sinkable;
 		Valueable<bool> Sinkable_SquidGrab;
 		Valueable<int> SinkSpeed;
@@ -797,6 +799,8 @@ public:
 			, Spawner_RecycleAnim { }
 			, Spawner_RecycleCoord { {0,0,0} }
 			, Spawner_RecycleOnTurret { false }
+
+			, Paradrop_DropPassengers { true }
 
 			, Sinkable { }
 			, Sinkable_SquidGrab { true }

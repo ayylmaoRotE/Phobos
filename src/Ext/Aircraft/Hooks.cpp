@@ -559,7 +559,14 @@ DEFINE_HOOK(0x415EEE, AircraftClass_Fire_KickOutPassengers, 0x6)
 		return 0;
 
 	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
+	auto const pTypeExt = TechnoTypeExt::ExtMap.Find(pThis->Type);
 
+	// Check TechnoType setting for Paradrop.DropPassengers=no
+	// If false, skip passenger ejection regardless of weapon setting
+	if (!pTypeExt->Paradrop_DropPassengers.Get())
+		return SkipKickOutPassengers;
+
+	// Otherwise, use weapon-specific setting (default behavior)
 	if (pWeaponExt->KickOutPassengers)
 		return 0;
 
