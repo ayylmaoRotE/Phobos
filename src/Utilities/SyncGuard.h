@@ -30,12 +30,23 @@
 struct SyncGuard
 {
 	alignas(Randomizer) unsigned char saved_[sizeof(Randomizer)];
+	bool ok_ = false;
 	SyncGuard()
 	{
-		std::memcpy(saved_, &ScenarioClass::Instance->Random, sizeof(Randomizer));
+		if (auto* sc = ScenarioClass::Instance)
+		{
+			std::memcpy(saved_, &sc->Random, sizeof(Randomizer));
+			ok_ = true;
+		}
 	}
 	~SyncGuard()
 	{
-		std::memcpy(&ScenarioClass::Instance->Random, saved_, sizeof(Randomizer));
+		if (ok_)
+		{
+			if (auto* sc = ScenarioClass::Instance)
+			{
+				std::memcpy(&sc->Random, saved_, sizeof(Randomizer));
+			}
+		}
 	}
 };
